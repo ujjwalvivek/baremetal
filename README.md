@@ -5,6 +5,8 @@
 ![Echopoint SVG](https://echopoint.ujjwalvivek.com/svg/badges/custom?leftText=Intel+syntax&badgeColor=004080&textColor=ffffff)
 ![Echopoint SVG](https://echopoint.ujjwalvivek.com/svg/badges/custom?leftText=16KB+code&rightText=128KB+data%2Bbss&badgeColor=400040&textColor=ffffff)
 
+<img width="1000" alt="baremetal" src="https://github.com/user-attachments/assets/72c03fd5-6db2-402a-8e23-807127002295" />
+
 ## Constraints
 
 Entry point is `_start`. No malloc, printf, memcpy. Every syscall is a raw `syscall` instruction. All memory is statically allocated in `.data` or `.bss`: sizes fixed at link time. The FPU is never touched; trigonometry runs on integer registers via LUTs and Q8 fixed-point. One `write(1, buf, len)` per frame: no per-character writes, no ioctl inside the render path.
