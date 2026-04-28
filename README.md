@@ -1,4 +1,4 @@
-# BAREMETAL: Architecture Reference
+# BAREMETAL
 
 ![Echopoint SVG](https://echopoint.ujjwalvivek.com/svg/badges/custom?leftText=x86-64&rightText=assembly&badgeColor=808000&textColor=ffffff)
 ![Echopoint SVG](https://echopoint.ujjwalvivek.com/svg/badges/custom?leftText=Linux+only&rightText=Static+binary&badgeColor=804000&textColor=ffffff)
@@ -32,7 +32,7 @@ math.asm       ;sin/cos LUTs (×1024, 360 entries), Q8 helpers, int_to_ascii
 game.asm       ;world map, player state, DDA raycaster, update_game
 ```
 
-Cross-module linkage is `global`/`extern` only, no shared headers and Symbol names are the ABI.
+Cross-module linkage is `global`/`extern` only. No shared headers: symbol names are the ABI.
 
 ## Game Loop
 
@@ -159,20 +159,6 @@ Results go into `col_char[c]`, `col_top[c]`, `col_bot[c]`: 512-byte `.bss` array
 ## Timing (`timing.asm`)
 
 `clock_gettime(CLOCK_MONOTONIC)` writes a 16-byte `timespec`. `elapsed_ns` is `(Δsec × 1e9) + Δnsec`. Frame sleep is `nanosleep` with `tv_sec=0` and the nanosecond remainder in `tv_nsec`. The struct is `{tv_sec at 0, tv_nsec at 8}`: putting the nanosecond value in `tv_sec` by accident gives a ~16 million second sleep.
-
-## Syscall Table
-
-| rax | name          | where used                         |
-| --- | ------------- | ---------------------------------- |
-| 0   | read          | input drain loop                   |
-| 1   | write         | frame flush, terminal init/restore |
-| 7   | poll          | non-blocking stdin check           |
-| 13  | rt_sigaction  | SIGINT, SIGTERM, SIGSEGV handlers  |
-| 15  | rt_sigreturn  | restorer trampoline                |
-| 16  | ioctl         | TCGETS, TCSETS, TIOCGWINSZ         |
-| 35  | nanosleep     | frame sleep                        |
-| 60  | exit          | shutdown                           |
-| 228 | clock_gettime | frame timing                       |
 
 ## ABI
 

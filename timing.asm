@@ -1,6 +1,4 @@
-; =============================================================================
 ; timing.asm: clock_gettime, elapsed calculation, nanosleep
-; =============================================================================
 
 section .bss
 global time_start, time_current
@@ -15,10 +13,6 @@ CLOCK_MONOTONIC   equ 1
 
 global get_time, elapsed_ns, sleep_remaining
 
-; =============================================================================
-; get_time: clock_gettime(CLOCK_MONOTONIC, ptr)
-; Input: rdi = pointer to timespec struct
-; =============================================================================
 get_time:
     mov rsi, rdi               ; rsi = timespec ptr
     mov rax, SYS_CLOCK_GETTIME
@@ -26,11 +20,6 @@ get_time:
     syscall
     ret
 
-; =============================================================================
-; elapsed_ns: Calculate nanoseconds between two timespecs
-; Input: rdi = start timespec ptr, rsi = end timespec ptr
-; Output: rax = elapsed nanoseconds
-; =============================================================================
 elapsed_ns:
     push rbx
     mov rax, [rsi]             ; end tv_sec
@@ -42,10 +31,6 @@ elapsed_ns:
     pop rbx
     ret
 
-; =============================================================================
-; sleep_remaining: nanosleep for given nanoseconds (always < 1 second)
-; Input: rdi = nanoseconds to sleep
-; =============================================================================
 sleep_remaining:
     ; Frame sleeps are always < 1s, so tv_sec=0, tv_nsec=rdi
     mov qword [rel time_sleep], 0      ; tv_sec = 0

@@ -1,17 +1,16 @@
-; =============================================================================
-; input.asm: Non-blocking keyboard input via poll + read
-; =============================================================================
+; input.asm: non-blocking keyboard input via poll + read
 
 section .bss
 poll_fd: resb 8
 key_buffer: resb 8
 
-global key_up, key_down, key_left, key_right, quit_flag
+global key_up, key_down, key_left, key_right, quit_flag, any_key
 key_up:    resb 1
 key_down:  resb 1
 key_left:  resb 1
 key_right: resb 1
 quit_flag: resb 1
+any_key:   resb 1
 
 section .text
 SYS_READ equ 0
@@ -52,11 +51,11 @@ process_input:
     push rbp
     mov rbp, rsp
 
-    ; Clear all direction flags: one direction per frame, last key wins
     mov byte [rel key_up], 0
     mov byte [rel key_down], 0
     mov byte [rel key_left], 0
     mov byte [rel key_right], 0
+    mov byte [rel any_key], 0
 
     ; Drain all buffered input. Each recognised key clears the others and
     ; sets only itself: so if W and D are both in the buffer, whichever
@@ -65,6 +64,7 @@ process_input:
     call read_key
     test al, al
     jz .done
+    mov byte [rel any_key], 1   ; any non-null byte counts
     cmp al, 'w'
     je .set_up
     cmp al, 'W'

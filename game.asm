@@ -1,19 +1,14 @@
-; =============================================================================
-; game.asm: World map, player state, DDA raycaster
-; =============================================================================
+; game.asm: world map, player state, DDA raycaster
 
-; --- Map dimensions ----------------------------------------------------------
 MAP_WIDTH  equ 16
 MAP_HEIGHT equ 16
 
-; --- Fixed-point movement speed (Q8: real speed = MOVE_SPEED / 256 cells/frame)
-; 16 = 0.0625 cells/frame = 3.75 cells/sec @ 60fps
+; Q8: real speed = MOVE_SPEED / 256 cells/frame  (16 = 3.75 cells/sec @ 60fps)
 MOVE_SPEED equ 16
 
-; --- Rotation speed (degrees per key press per frame) ------------------------
-ROT_SPEED  equ 5
+ROT_SPEED  equ 5   ; degrees per frame
 
-; --- DDA infinity sentinel (half INT64_MAX — prevents overflow on add) -------
+; half INT64_MAX: prevents overflow when accumulating side_dist
 DDA_INF    equ 0x3FFFFFFFFFFFFFFF
 
 section .data
@@ -68,32 +63,19 @@ extern key_up, key_down, key_left, key_right
 
 global init_game, update_game, cast_ray
 
-; =============================================================================
-; init_game: Place player at map position (4.0, 4.0), facing east (angle = 0)
-; =============================================================================
 init_game:
     push rbp
     mov rbp, rsp
 
-    ; Start at center of E-W corridor (col 7.5, row 7.5), facing east.
-    mov qword [rel player_x], (7 << 8) | 128   ; 7.5 in Q8
-    mov qword [rel player_y], (7 << 8) | 128   ; 7.5 in Q8
-    mov qword [rel player_angle], 0             ; facing east
+    ; corridor center (7.5, 7.5) in Q8, facing east
+    mov qword [rel player_x], (7 << 8) | 128
+    mov qword [rel player_y], (7 << 8) | 128
+    mov qword [rel player_angle], 0
 
     pop rbp
     ret
 
-; =============================================================================
-; update_game: Rotate (A/D) and move forward/back (W/S) with wall collision
-;
-; Rotation: key_left  (A) → angle -= ROT_SPEED mod 360
-;           key_right (D) → angle += ROT_SPEED mod 360
-;
-; Movement: key_up    (W) → forward along player_angle
-;           key_down  (S) → backward along player_angle
-;
-; Collision: x and y axes tested independently — enables wall sliding.
-; =============================================================================
+; x and y collision checked independently → wall sliding
 update_game:
     push rbp
     mov rbp, rsp
@@ -101,7 +83,6 @@ update_game:
     push r12
     push r13
 
-    ; --- Rotation ------------------------------------------------------------
     cmp byte [rel key_left], 1
     jne .no_left
     mov rax, [rel player_angle]
@@ -123,16 +104,14 @@ update_game:
     mov [rel player_angle], rax
 .no_right:
 
-    ; --- Movement ------------------------------------------------------------
-    movzx r12, byte [rel key_up]     ; r12 = 1 if W (forward)
-    movzx r13, byte [rel key_down]   ; r13 = 1 if S (backward)
+    movzx r12, byte [rel key_up]
+    movzx r13, byte [rel key_down]
     test r12, r12
     jnz .do_move
     test r13, r13
     jz .no_move
 
 .do_move:
-    ; Load ray direction for current angle
     mov rax, [rel player_angle]
     lea rbx, [rel cos_table]
     mov rbx, [rbx + rax*8]           ; rbx = cos[angle] (×1024)
@@ -160,7 +139,6 @@ update_game:
     sar rax, 10
     mov r13, rax                     ; r13 = dy (Q8)
 
-    ; --- X-axis collision check ---
     mov rax, [rel player_x]
     add rax, r12                     ; proposed new_x (Q8)
     mov rbx, rax
@@ -172,11 +150,10 @@ update_game:
     lea rbx, [rel world_map]
     movzx rbx, byte [rbx + rcx]
     test rbx, rbx
-    jnz .skip_x                      ; wall: skip x movement
-    mov [rel player_x], rax          ; apply x movement
+    jnz .skip_x
+    mov [rel player_x], rax
 .skip_x:
 
-    ; --- Y-axis collision check ---
     mov rax, [rel player_y]
     add rax, r13                     ; proposed new_y (Q8)
     mov rbx, rax
@@ -188,8 +165,8 @@ update_game:
     lea rcx, [rel world_map]
     movzx rcx, byte [rcx + rbx]
     test rcx, rcx
-    jnz .skip_y                      ; wall: skip y movement
-    mov [rel player_y], rax          ; apply y movement
+    jnz .skip_y
+    mov [rel player_y], rax
 .skip_y:
 
 .no_move:
@@ -199,28 +176,10 @@ update_game:
     pop rbp
     ret
 
-; =============================================================================
-; cast_ray: DDA raycaster — cast a single ray, return perpendicular wall dist
-;
-; Input:  rdi = ray angle (0..359 degrees)
-; Output: rax = perpendicular wall distance (map units × 1024), minimum 1
-;
-; The perpendicular distance formula (side_dist - delta_dist) already
-; corrects for the fisheye effect — no separate cosine multiply needed.
-;
-; Register map (active ranges):
-;   r8        ray_dir_x (cos[angle] ×1024)  → map-lookup scratch in loop
-;   r9        ray_dir_y (sin[angle] ×1024)  → freed after setup
-;   r10       map_x  — current DDA grid cell x
-;   r11       map_y  — current DDA grid cell y
-;   r12       delta_dist_x  (×1024, always > 0)
-;   r13       delta_dist_y  (×1024, always > 0)
-;   r14       side_dist_x   (×1024 accumulator)
-;   r15       side_dist_y   (×1024 accumulator)
-;   rbx       step_x  (+1 or -1)
-;   rcx       step_y  (+1 or -1)
-;   rdx       side flag: 0 = last step was x, 1 = last step was y
-; =============================================================================
+; perp_dist = side_dist_at_wall - delta_dist  (fisheye corrected, no cos multiply)
+; r8=ray_dir_x  r9=ray_dir_y  r10=map_x   r11=map_y
+; r12=delta_x   r13=delta_y   r14=side_x  r15=side_y
+; rbx=step_x    rcx=step_y    rdx=side(0=x,1=y)
 cast_ray:
     push rbp
     mov rbp, rsp
@@ -230,13 +189,11 @@ cast_ray:
     push r14
     push r15
 
-    ; --- Ray direction from LUT -----------------------------------------------
     lea rax, [rel cos_table]
     mov r8, [rax + rdi*8]            ; r8 = cos[angle] (×1024)
     lea rax, [rel sin_table]
     mov r9, [rax + rdi*8]            ; r9 = sin[angle] (×1024)
 
-    ; --- Starting map cell from Q8 player position ----------------------------
     mov rax, [rel player_x]
     sar rax, 8
     mov r10, rax                     ; map_x
@@ -245,13 +202,12 @@ cast_ray:
     sar rax, 8
     mov r11, rax                     ; map_y
 
-    ; --- delta_dist_x = |1024 * 1024 / ray_dir_x| ----------------------------
-    ; ray_dir_x = 0 → ray is vertical: use DDA_INF so x is never stepped
+    ; delta_dist = |1024²/ray_dir|  (0 → DDA_INF: that axis is never stepped)
     test r8, r8
     jz .ddx_zero
     mov rax, 1048576                 ; 1024 × 1024
     cqo
-    idiv r8                          ; rax = 1024²/ray_dir_x  (signed)
+    idiv r8
     test rax, rax
     jns .ddx_pos
     neg rax
@@ -262,7 +218,6 @@ cast_ray:
     mov r12, DDA_INF
 .ddx_done:
 
-    ; --- delta_dist_y = |1024 * 1024 / ray_dir_y| ----------------------------
     test r9, r9
     jz .ddy_zero
     mov rax, 1048576
@@ -278,7 +233,6 @@ cast_ray:
     mov r13, DDA_INF
 .ddy_done:
 
-    ; --- step_x and initial side_dist_x ---------------------------------------
     test r8, r8
     jz .setup_x_zero
     jns .step_x_pos
@@ -309,7 +263,6 @@ cast_ray:
     mov r14, DDA_INF
 .setup_x_done:
 
-    ; --- step_y and initial side_dist_y ---------------------------------------
     test r9, r9
     jz .setup_y_zero
     jns .step_y_pos
@@ -342,29 +295,25 @@ cast_ray:
 
     xor rdx, rdx                     ; side = 0 (x) initially
 
-    ; --- DDA loop -------------------------------------------------------------
-    mov rsi, 32                      ; max iterations = MAP_WIDTH + MAP_HEIGHT
+    mov rsi, 32                      ; max iterations (boundary walls make this a safety net)
 .dda_loop:
     dec rsi
     jz .hit_far                      ; safety: map has boundary walls so unreachable
 
-    cmp r14, r15                     ; side_dist_x vs side_dist_y
+    cmp r14, r15
     jle .dda_step_x
 
-    ; Step in Y
-    add r15, r13                     ; side_dist_y += delta_dist_y
-    add r11, rcx                     ; map_y += step_y
-    mov rdx, 1                       ; side = y
+    add r15, r13
+    add r11, rcx
+    mov rdx, 1
     jmp .dda_check
 
-.dda_step_x:
-    ; Step in X (or equal: prefer x for determinism)
-    add r14, r12                     ; side_dist_x += delta_dist_x
-    add r10, rbx                     ; map_x += step_x
-    xor rdx, rdx                     ; side = x
+.dda_step_x:                         ; equal: prefer x for determinism
+    add r14, r12
+    add r10, rbx
+    xor rdx, rdx
 
 .dda_check:
-    ; Bounds check (safety net: boundary walls should prevent escape)
     cmp r10, 0
     jl .hit_far
     cmp r10, MAP_WIDTH
@@ -381,13 +330,9 @@ cast_ray:
     lea r8, [rel world_map]
     movzx r8, byte [r8 + rax]       ; r8 = cell value (0 = open, 1 = wall)
     test r8, r8
-    jz .dda_loop                     ; open: keep stepping
+    jz .dda_loop
 
-    ; Wall hit — fall through to distance calculation
-
-    ; --- Perpendicular distance -----------------------------------------------
-    ; perp_dist = side_dist_at_wall - delta_dist
-    ; (this is side_dist BEFORE the step that hit the wall)
+    ; side_dist was already advanced past the wall, hence, subtract delta to get pre-step value
     test rdx, rdx
     jnz .perp_y
     mov rax, r14

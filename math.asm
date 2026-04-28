@@ -1,15 +1,10 @@
-; =============================================================================
-; math.asm: Integer to ASCII, fixed-point math, sin/cos LUTs
-; =============================================================================
+; math.asm: integer to ASCII, fixed-point helpers, sin/cos LUTs
 
-; =============================================================================
-; Sine / Cosine Lookup Tables
-; sin_table[i] = round(sin(i°) × 1024)   for i = 0..359
-; cos_table[i] = round(cos(i°) × 1024)   for i = 0..359
-; Each entry is a signed 64-bit qword.  Access: [table + angle*8]
-; Scale factor 1024 chosen to eliminate wall-height stair-stepping at 24 rows.
-; To get Q8 result from a LUT multiply: (q8_val * lut_val) >> 10
-; =============================================================================
+; sin_table[i] = round(sin(i°) × 1024)  for i = 0..359
+; cos_table[i] = round(cos(i°) × 1024)  for i = 0..359
+; signed 64-bit qword per entry.  Access: [table + angle*8]
+; scale factor 1024: eliminates wall-height stair-stepping at 24 rows
+; Q8 multiply: (q8_val * lut_val) >> 10
 
 section .data
 
@@ -119,21 +114,14 @@ global lut_mul
 global fp_div
 global abs_val
 
-; =============================================================================
-; int_to_ascii: Convert unsigned integer to ASCII decimal string
-; Input:  rax = value to convert
-;         rdi = destination buffer pointer
-; Output: rdi = pointer past last written byte
-;         rax = number of bytes written
-; Preserves: rbx, r12-r15 (callee-saved per SysV ABI)
-; =============================================================================
+; int_to_ascii: rax=value, rdi=dest → rdi past end, rax=byte count
 int_to_ascii:
     push rbx
     push r12
 
     mov r12, rdi               ; save dest pointer
-    mov rbx, 10                ; divisor
-    xor rcx, rcx               ; digit count = 0
+    mov rbx, 10
+    xor rcx, rcx
 
     ; Special case: value is 0
     test rax, rax
@@ -148,60 +136,44 @@ int_to_ascii:
 .divide_loop:
     xor rdx, rdx
     div rbx                    ; rax = quotient, rdx = remainder
-    add dl, '0'                ; convert to ASCII
-    mov [rel digit_buf + rcx], dl
+    add dl, '0'
+    lea r8, [rel digit_buf]
+    mov [r8 + rcx], dl
     inc rcx
     test rax, rax
     jnz .divide_loop
 
     ; Digits are in digit_buf in reverse order. Write them forward.
-    mov rax, rcx               ; save count for return value
+    mov rax, rcx
 .write_loop:
     dec rcx
-    movzx rdx, byte [rel digit_buf + rcx]
+    lea r8, [rel digit_buf]
+    movzx rdx, byte [r8 + rcx]
     mov [rdi], dl
     inc rdi
     test rcx, rcx
     jnz .write_loop
 
-    ; rdi is now past last written byte
-    ; rax = number of bytes written
     pop r12
     pop rbx
     ret
 
-; =============================================================================
-; lut_mul: Multiply a Q8 value by a LUT(×1024) value → Q8 result
-; Input:  rdi = Q8 value  (real × 256)
-;         rsi = LUT value (real × 1024)
-; Output: rax = (rdi * rsi) >> 10   [Q8: real × 256]
-; Use for: applying cos/sin to a Q8 position or distance
-; =============================================================================
+; lut_mul: (Q8 × LUT×1024) >> 10 → Q8
 lut_mul:
     imul rdi, rsi
     sar rdi, 10
     mov rax, rdi
     ret
 
-; =============================================================================
-; fp_div: Integer division with Q8 precision in the result
-; Input:  rdi = numerator   (plain integer or Q8)
-;         rsi = denominator (plain integer or LUT value, non-zero)
-; Output: rax = (rdi << 8) / rsi
-; Use for: delta_dist = (1 << 8) / |ray_dir|  in the DDA inner loop
-; =============================================================================
+; fp_div: (rdi << 8) / rsi → rax
 fp_div:
     mov rax, rdi
     sal rax, 8
     cqo                        ; sign-extend rax into rdx:rax
-    idiv rsi                   ; rax = quotient
+    idiv rsi
     ret
 
-; =============================================================================
-; abs_val: Absolute value of a 64-bit signed integer (branchless)
-; Input:  rdi = value
-; Output: rax = |rdi|
-; =============================================================================
+; abs_val: branchless |rdi| → rax
 abs_val:
     mov rax, rdi
     cqo                        ; rdx = 0 if positive, -1 if negative
