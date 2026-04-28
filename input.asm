@@ -88,27 +88,19 @@ process_input:
     jmp .read_loop
 .set_up:
     mov byte [rel key_up], 1
-    mov byte [rel key_down], 0
-    mov byte [rel key_left], 0
-    mov byte [rel key_right], 0
+    mov byte [rel key_down], 0      ; cancel opposite only
     jmp .read_loop
 .set_down:
     mov byte [rel key_down], 1
-    mov byte [rel key_up], 0
-    mov byte [rel key_left], 0
-    mov byte [rel key_right], 0
+    mov byte [rel key_up], 0        ; cancel opposite only
     jmp .read_loop
 .set_left:
     mov byte [rel key_left], 1
-    mov byte [rel key_up], 0
-    mov byte [rel key_down], 0
-    mov byte [rel key_right], 0
+    mov byte [rel key_right], 0     ; cancel opposite only
     jmp .read_loop
 .set_right:
     mov byte [rel key_right], 1
-    mov byte [rel key_up], 0
-    mov byte [rel key_down], 0
-    mov byte [rel key_left], 0
+    mov byte [rel key_left], 0      ; cancel opposite only
     jmp .read_loop
 .set_quit:
     mov byte [rel quit_flag], 1

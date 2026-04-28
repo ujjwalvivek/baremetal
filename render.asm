@@ -28,9 +28,16 @@ frame_buffer: resb BUFFER_SIZE
 global buf_pos
 buf_pos:      resq 1          ; current write position in frame_buffer
 
-; --- Last rendered player position (delta tracking) -------------------------
-last_drawn_x: resq 1
-last_drawn_y: resq 1
+; --- Per-column raycaster results (up to MAX_SCREEN_COLS columns) -----------
+MAX_SCREEN_COLS equ 512
+MAX_SCREEN_ROWS equ 200
+col_char: resb MAX_SCREEN_COLS  ; UTF-8 third byte of wall shade block char
+col_top:  resb MAX_SCREEN_COLS  ; first wall row (0-indexed interior)
+col_bot:  resb MAX_SCREEN_COLS  ; last  wall row (0-indexed interior)
+
+; --- Dynamic interior dimensions (set once per render_frame) ----------------
+render_scr_cols: resq 1   ; = term_cols - 2
+render_scr_rows: resq 1   ; = term_rows - 2
 
 section .text
 
@@ -39,8 +46,20 @@ section .text
     extern term_cols
     extern player_x
     extern player_y
-    extern player_char
-    extern player_char_len
+    extern player_angle
+    extern cast_ray
+    extern world_map
+
+; --- Rendering constants ----------------------------------------------------
+FOV_HALF     equ 30         ; half of 60° FOV
+FOV_TOTAL    equ 60         ; full FOV
+SHADE_NEAR   equ 2048       ; perp_dist < 2 cells  → █  (cells × 1024)
+SHADE_MED    equ 4096       ; perp_dist < 4 cells  → ▓
+SHADE_FAR    equ 8192       ; perp_dist < 8 cells  → ▒  (else → ░)
+BLOCK_FULL   equ 0x88       ; █
+BLOCK_DARK   equ 0x93       ; ▓
+BLOCK_MED    equ 0x92       ; ▒
+BLOCK_LIGHT  equ 0x91       ; ░
 
     global render_init
     global render_frame
@@ -306,19 +325,6 @@ render_init:
     mov rcx, 3
     call draw_bytes_at
 
-    ; --- Draw player at initial position ---
-    mov rdi, [rel player_y]
-    mov rsi, [rel player_x]
-    lea rdx, [rel player_char]
-    movzx rcx, byte [rel player_char_len]
-    call draw_bytes_at
-
-    ; --- Save last drawn position ---
-    mov rax, [rel player_x]
-    mov [rel last_drawn_x], rax
-    mov rax, [rel player_y]
-    mov [rel last_drawn_y], rax
-
     ; --- Flush to terminal ---
     call flush_buffer
 
@@ -331,57 +337,294 @@ render_init:
     ret
 
 ; =============================================================================
-; render_frame: Delta render: erase previous cell, draw at new cell.
-; Writes ~26 bytes per frame when moving, zero when still.
+; render_frame: Full 3D raycasted view — adapts to actual terminal dimensions
+;
+; Pass 1: cast one ray per interior column → col_char/top/bot arrays
+; Pass 2: emit full frame row-by-row (ceiling=' ', floor='.', wall=block char)
+;
+; screen_cols = term_cols - 2  (capped at MAX_SCREEN_COLS)
+; screen_rows = term_rows - 2  (capped at MAX_SCREEN_ROWS)
+; FOV: 60° (±30° around player_angle)
 ; =============================================================================
 render_frame:
     push rbp
     mov rbp, rsp
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    sub rsp, 8              ; 16-byte stack alignment
+
+    ; --- Compute interior dimensions (clamped to array bounds) ---------------
+    mov rax, [rel term_cols]
+    sub rax, 2
+    cmp rax, MAX_SCREEN_COLS
+    jle .cols_ok
+    mov rax, MAX_SCREEN_COLS
+.cols_ok:
+    mov [rel render_scr_cols], rax
+
+    mov rax, [rel term_rows]
+    sub rax, 2
+    cmp rax, MAX_SCREEN_ROWS
+    jle .rows_ok
+    mov rax, MAX_SCREEN_ROWS
+.rows_ok:
+    mov [rel render_scr_rows], rax
+
+    ; =========================================================================
+    ; Pass 1: cast one ray per column
+    ; =========================================================================
+    xor r12, r12            ; c = 0
+
+.cast_loop:
+    mov r8, [rel render_scr_cols]
+    cmp r12, r8
+    jge .cast_done
+
+    ; divisor = screen_cols - 1; guard against degenerate 1-column terminal
+    mov rcx, r8
+    dec rcx
+    jz .cast_done
+
+    ; ray_angle = player_angle - FOV_HALF + (c * FOV_TOTAL / (screen_cols-1))
+    mov rax, r12
+    imul rax, FOV_TOTAL
+    cqo
+    idiv rcx                ; rax = offset 0..FOV_TOTAL
+    add rax, [rel player_angle]
+    sub rax, FOV_HALF
+
+    ; Normalise to 0..359
+    cmp rax, 0
+    jge .angle_pos
+    add rax, 360
+.angle_pos:
+    cmp rax, 360
+    jl .angle_ok
+    sub rax, 360
+.angle_ok:
+
+    mov rdi, rax
+    call cast_ray           ; rax = perp_dist (cells × 1024)
+    mov rbx, rax            ; rbx = dist
+
+    ; wall_h = screen_rows * 1024 / dist  (capped to screen_rows)
+    mov rax, [rel render_scr_rows]
+    imul rax, 1024
+    cqo
+    idiv rbx
+    mov r13, [rel render_scr_rows]
+    cmp rax, r13
+    jle .cap_ok
+    mov rax, r13
+.cap_ok:
+    mov r13, rax            ; r13 = wall_h
+
+    ; wall_top = (screen_rows - wall_h) / 2
+    mov rax, [rel render_scr_rows]
+    sub rax, r13
+    sar rax, 1
+    mov r14, rax            ; r14 = wall_top
+
+    ; wall_bot = wall_top + wall_h - 1
+    lea r15, [r14 + r13 - 1]
+
+    ; Shade: pick block char variant byte by distance
+    cmp rbx, SHADE_NEAR
+    jl .shade_near
+    cmp rbx, SHADE_MED
+    jl .shade_dark
+    cmp rbx, SHADE_FAR
+    jl .shade_med
+    mov al, BLOCK_LIGHT
+    jmp .shade_done
+.shade_near:
+    mov al, BLOCK_FULL
+    jmp .shade_done
+.shade_dark:
+    mov al, BLOCK_DARK
+    jmp .shade_done
+.shade_med:
+    mov al, BLOCK_MED
+.shade_done:
+
+    lea rcx, [rel col_char]
+    mov [rcx + r12], al
+    lea rcx, [rel col_top]
+    mov [rcx + r12], r14b
+    lea rcx, [rel col_bot]
+    mov [rcx + r12], r15b
+
+    inc r12
+    jmp .cast_loop
+
+.cast_done:
+    ; =========================================================================
+    ; Pass 2: emit full frame
+    ; =========================================================================
+    call clear_buffer
+
+    xor r12, r12            ; r = 0
+
+.row_loop:
+    cmp r12, [rel render_scr_rows]
+    jge .frame_done
+
+    lea rdi, [r12 + 2]
+    mov rsi, 2
+    call append_cursor_move
+
+    xor r13, r13            ; c = 0
+
+.col_loop:
+    cmp r13, [rel render_scr_cols]
+    jge .row_done
+
+    lea rax, [rel col_top]
+    movzx r14, byte [rax + r13]
+    lea rax, [rel col_bot]
+    movzx r15, byte [rax + r13]
+
+    cmp r12, r14
+    jl .emit_ceiling
+    cmp r12, r15
+    jg .emit_floor
+
+    ; Wall: 3-byte UTF-8 (0xE2 0x96 + variant)
+    lea rax, [rel col_char]
+    movzx rbx, byte [rax + r13]
+    mov rdi, [rel buf_pos]
+    mov byte [rdi],   0xE2
+    mov byte [rdi+1], 0x96
+    mov byte [rdi+2], bl
+    add rdi, 3
+    mov [rel buf_pos], rdi
+    jmp .col_next
+
+.emit_ceiling:
+    mov rdi, [rel buf_pos]
+    mov byte [rdi], ' '
+    inc rdi
+    mov [rel buf_pos], rdi
+    jmp .col_next
+
+.emit_floor:
+    mov rdi, [rel buf_pos]
+    mov byte [rdi], '.'
+    inc rdi
+    mov [rel buf_pos], rdi
+
+.col_next:
+    inc r13
+    jmp .col_loop
+
+.row_done:
+    inc r12
+    jmp .row_loop
+
+.frame_done:
+    call render_minimap
+    call flush_buffer
+
+    add rsp, 8
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    pop rbp
+    ret
+
+; =============================================================================
+; render_minimap: Draw 16×16 map in top-right corner of interior area.
+;
+; Each cell → 1 char: '#' wall, '@' player, '.' floor.
+; Top-left of minimap = terminal row 2, col (term_cols - MAP_WIDTH - 1).
+; Overwrites into the already-built frame buffer (called before flush).
+; =============================================================================
+MMAP_W equ 16
+MMAP_H equ 16
+
+render_minimap:
+    push rbp
+    mov rbp, rsp
+    push rbx
     push r12
     push r13
     push r14
     push r15
 
-    mov r12, [rel player_x]      ; current col
-    mov r13, [rel player_y]      ; current row
-    mov r14, [rel last_drawn_x]  ; previous col
-    mov r15, [rel last_drawn_y]  ; previous row
+    ; minimap left col (1-indexed terminal col) = term_cols - MMAP_W
+    mov r14, [rel term_cols]
+    sub r14, MMAP_W           ; r14 = minimap left col (1-indexed)
 
-    ; If position unchanged, nothing to do
-    cmp r12, r14
-    jne .do_update
-    cmp r13, r15
-    je .done
+    ; player map cell
+    mov rax, [rel player_x]
+    sar rax, 8
+    mov r12, rax              ; r12 = player map_x
+    mov rax, [rel player_y]
+    sar rax, 8
+    mov r13, rax              ; r13 = player map_y
 
-.do_update:
-    ; Reset buffer (no cursor-home: targeted writes only)
-    lea rax, [rel frame_buffer]
-    mov [rel buf_pos], rax
+    xor rbx, rbx              ; my = 0
+.mm_row:
+    cmp rbx, MMAP_H
+    jge .mm_done
 
-    ; Erase previous player cell with a space
-    mov rdi, r15
+    ; cursor: terminal row = rbx + 2, col = r14
+    lea rdi, [rbx + 2]
     mov rsi, r14
-    mov dl, ' '
-    call draw_char_at
+    call append_cursor_move
 
-    ; Draw player at new position
-    mov rdi, r13
-    mov rsi, r12
-    lea rdx, [rel player_char]
-    movzx rcx, byte [rel player_char_len]
-    call draw_bytes_at
+    xor r15, r15              ; mx = 0
+.mm_col:
+    cmp r15, MMAP_W
+    jge .mm_col_done
 
-    ; Update stored position
-    mov [rel last_drawn_x], r12
-    mov [rel last_drawn_y], r13
+    ; Check if this is the player cell
+    cmp rbx, r13
+    jne .mm_not_player
+    cmp r15, r12
+    jne .mm_not_player
+    mov rdi, [rel buf_pos]
+    mov byte [rdi], '@'
+    inc rdi
+    mov [rel buf_pos], rdi
+    jmp .mm_next
 
-    ; Flush (~26 bytes, single write syscall)
-    call flush_buffer
+.mm_not_player:
+    ; world_map[my * 16 + mx]
+    mov rax, rbx
+    imul rax, MMAP_W
+    add rax, r15
+    lea rdi, [rel world_map]
+    movzx rdi, byte [rdi + rax]
+    mov rdi, [rel buf_pos]
+    test al, al
+    jz .mm_floor
+    mov byte [rdi], '#'
+    jmp .mm_emit
+.mm_floor:
+    mov byte [rdi], '.'
+.mm_emit:
+    inc rdi
+    mov [rel buf_pos], rdi
 
-.done:
+.mm_next:
+    inc r15
+    jmp .mm_col
+
+.mm_col_done:
+    inc rbx
+    jmp .mm_row
+
+.mm_done:
     pop r15
     pop r14
     pop r13
     pop r12
+    pop rbx
     pop rbp
     ret
