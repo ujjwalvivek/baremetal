@@ -38,14 +38,17 @@ termios_orig: resb 60
 termios_raw:  resb 60
 
 sigact:       resb 32
+sigact_winch: resb 32
 
 ; struct winsize { unsigned short ws_row, ws_col, ws_xpixel, ws_ypixel; }
 winsize:      resb 8
 
 global term_rows
 global term_cols
+global resize_flag
 term_rows:    resq 1
 term_cols:    resq 1
+resize_flag:  resb 1
 
 section .text
 
@@ -81,9 +84,10 @@ LFLAG_MASK equ ECHO | ICANON | IEXTEN | ISIG
 CC_VTIME equ 17 + 5           ; = 22
 CC_VMIN  equ 17 + 6           ; = 23
 
-SIGINT  equ 2
-SIGSEGV equ 11
-SIGTERM equ 15
+SIGINT    equ 2
+SIGSEGV   equ 11
+SIGTERM   equ 15
+SIGWINCH  equ 28
 
     global init_terminal
     global restore_terminal
@@ -174,6 +178,21 @@ init_terminal:
     mov r10, 8
     syscall
 
+    ; SIGWINCH: set resize_flag and return (don't exit)
+    lea rax, [rel resize_handler]
+    mov [rel sigact_winch + 0], rax
+    mov qword [rel sigact_winch + 8], SA_RESTORER
+    lea rax, [rel restorer_trampoline]
+    mov [rel sigact_winch + 16], rax
+    mov qword [rel sigact_winch + 24], 0
+
+    mov rax, SYS_RT_SIGACTION
+    mov rdi, SIGWINCH
+    lea rsi, [rel sigact_winch]
+    xor rdx, rdx
+    mov r10, 8
+    syscall
+
     pop rbp
     ret
 
@@ -243,6 +262,10 @@ signal_handler:
     mov rax, SYS_EXIT
     mov rdi, 1
     syscall
+
+resize_handler:
+    mov byte [rel resize_flag], 1
+    ret
 
 ; kernel requires this trampoline to call rt_sigreturn on signal return
 restorer_trampoline:

@@ -19,8 +19,11 @@ section .text
     extern render_start_screen
     extern quit_flag
     extern any_key
+    extern resize_flag
     extern time_start
     extern time_current
+    extern key_use
+    extern toggle_door
 
     global _start
 
@@ -49,6 +52,19 @@ _start:
     call process_input
     cmp byte [rel quit_flag], 1
     je .shutdown
+
+    cmp byte [rel key_use], 1
+    jne .no_use
+    call toggle_door
+.no_use:
+
+    ; handle terminal resize
+    cmp byte [rel resize_flag], 1
+    jne .no_resize
+    mov byte [rel resize_flag], 0
+    call get_terminal_size
+    call render_init
+.no_resize:
 
     call update_game
     call render_frame

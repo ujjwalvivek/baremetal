@@ -4,11 +4,12 @@ section .bss
 poll_fd: resb 8
 key_buffer: resb 8
 
-global key_up, key_down, key_left, key_right, quit_flag, any_key
+global key_up, key_down, key_left, key_right, key_use, quit_flag, any_key
 key_up:    resb 1
 key_down:  resb 1
 key_left:  resb 1
 key_right: resb 1
+key_use:   resb 1
 quit_flag: resb 1
 any_key:   resb 1
 
@@ -55,6 +56,7 @@ process_input:
     mov byte [rel key_down], 0
     mov byte [rel key_left], 0
     mov byte [rel key_right], 0
+    mov byte [rel key_use], 0
     mov byte [rel any_key], 0
 
     ; Drain all buffered input. Each recognised key clears the others and
@@ -81,10 +83,17 @@ process_input:
     je .set_right
     cmp al, 'D'
     je .set_right
+    cmp al, 'e'
+    je .set_use
+    cmp al, 'E'
+    je .set_use
     cmp al, 'q'
     je .set_quit
     cmp al, 'Q'
     je .set_quit
+    jmp .read_loop
+.set_use:
+    mov byte [rel key_use], 1
     jmp .read_loop
 .set_up:
     mov byte [rel key_up], 1

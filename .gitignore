@@ -1,6 +1,5 @@
 # Build artifacts
 *.o
 baremetal
-.vscode/settings.json
 .fuse_hidden*
 docs/
