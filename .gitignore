@@ -2,4 +2,3 @@
 *.o
 baremetal
 .fuse_hidden*
-docs/

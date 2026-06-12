@@ -73,10 +73,12 @@ world_map:
 
 section .bss
 
-global player_x, player_y, player_angle
+global player_x, player_y, player_angle, player_health, game_over_flag
 player_x:     resq 1           ; Q8 fixed-point X  (real pos = player_x >> 8)
 player_y:     resq 1           ; Q8 fixed-point Y  (real pos = player_y >> 8)
 player_angle: resq 1           ; 0..359 degrees (direct LUT index)
+player_health: resq 1          ; 0..100
+game_over_flag: resq 1         ; 0=playing, 1=dead
 
 global door_state
 door_state:   resb MAP_WIDTH * MAP_HEIGHT   ; 0=closed, 1=open (parallel to world_map)
@@ -96,6 +98,8 @@ init_game:
     mov qword [rel player_x], (15 << 8) | 128
     mov qword [rel player_y], (15 << 8) | 128
     mov qword [rel player_angle], 0
+    mov qword [rel player_health], 100
+    mov qword [rel game_over_flag], 0
 
     pop rbp
     ret
@@ -181,6 +185,9 @@ update_game:
     push rbx
     push r12
     push r13
+
+    cmp qword [rel game_over_flag], 1
+    je .game_over_skip_input
 
     cmp byte [rel key_left], 1
     jne .no_left
@@ -273,6 +280,340 @@ update_game:
 .skip_y:
 
 .no_move:
+    extern key_shoot
+    extern frame_count
+    extern z_buffer
+    extern render_scr_cols
+
+    ; Handle shooting
+    cmp byte [rel key_shoot], 1
+    jne .no_shoot
+    cmp qword [rel gun_fire_timer], 0
+    jne .no_shoot
+    mov qword [rel gun_fire_timer], 8    ; full animation cycle lasts 8 frames
+    mov byte [rel key_shoot], 0          ; consume input
+    
+    ; --- HITSCAN COMBAT ---
+    push r14
+    push r15
+    
+    ; Get wall distance at center of screen (Z-buffer)
+    mov rax, [rel render_scr_cols]
+    sar rax, 1                  ; center column
+    lea rdx, [rel z_buffer]
+    mov r14, [rdx + rax*8]      ; r14 = perp_dist (cells * 1024)
+    sar r14, 2                  ; r14 = wall_dist in Q8 (cells * 256)
+    
+    mov rax, [rel player_angle]
+    lea rbx, [rel cos_table]
+    mov rbx, [rbx + rax*8]      ; rbx = cos (x1024)
+    lea rcx, [rel sin_table]
+    mov rcx, [rcx + rax*8]      ; rcx = sin (x1024)
+    
+    extern enemy_x, enemy_y, enemy_state, enemy_health, enemy_timer
+    xor r15, r15                ; i = 0
+.hitscan_loop:
+    cmp r15, 2                  ; NUM_ENEMIES
+    jge .hitscan_done
+    
+    lea rdx, [rel enemy_state]
+    mov al, [rdx + r15]
+    cmp al, 3                   ; 3 = Dead
+    je .hitscan_next
+    cmp al, 0                   ; 0 = Inactive
+    je .hitscan_next
+    
+    ; dx = enemy_x - player_x (Q8)
+    lea rdx, [rel enemy_x]
+    mov r8, [rdx + r15*8]
+    sub r8, [rel player_x]      ; r8 = dx
+    
+    ; dy = enemy_y - player_y (Q8)
+    lea rdx, [rel enemy_y]
+    mov r9, [rdx + r15*8]
+    sub r9, [rel player_y]      ; r9 = dy
+    
+    ; dot = (dx*cos + dy*sin) / 1024
+    mov rax, r8
+    imul rax, rbx
+    mov r10, rax
+    mov rax, r9
+    imul rax, rcx
+    add r10, rax
+    sar r10, 10                 ; r10 = dot product (distance in front, Q8)
+    
+    ; if dot <= 0, enemy is behind us
+    cmp r10, 0
+    jle .hitscan_next
+    
+    ; if dot > wall_dist, wall is blocking the shot
+    cmp r10, r14
+    jg .hitscan_next
+    
+    ; cross = (cos*dy - sin*dx) / 1024
+    mov rax, rbx
+    imul rax, r9
+    mov r11, rax
+    mov rax, rcx
+    imul rax, r8
+    sub r11, rax
+    sar r11, 10                 ; r11 = cross product (distance from aim line, Q8)
+    
+    ; abs(cross)
+    mov rax, r11
+    sar rax, 63
+    xor r11, rax
+    sub r11, rax
+    
+    ; if abs(cross) < 64 (0.25 cells wide hitbox), it's a HIT!
+    cmp r11, 64
+    jge .hitscan_next
+    
+    ; HIT!
+    lea rdx, [rel enemy_health]
+    mov al, [rdx + r15]
+    sub al, 34                  ; 3 shots to kill 100hp
+    jns .not_dead
+    xor al, al                  ; cap at 0
+.not_dead:
+    mov [rdx + r15], al
+    
+    lea rdx, [rel enemy_timer]
+    mov byte [rdx + r15], 10    ; stun for 10 frames
+    
+    lea rdx, [rel enemy_state]
+    cmp al, 0
+    je .kill_enemy
+    mov byte [rdx + r15], 2     ; state 2 = Hurt
+    jmp .hitscan_next
+.kill_enemy:
+    mov byte [rdx + r15], 3     ; state 3 = Dead
+
+.hitscan_next:
+    inc r15
+    jmp .hitscan_loop
+
+.hitscan_done:
+    pop r15
+    pop r14
+    
+.game_over_skip_input:
+.no_shoot:
+    ; decrement gun timer
+    mov rax, [rel gun_fire_timer]
+    test rax, rax
+    jz .flash_done
+    dec rax
+    mov [rel gun_fire_timer], rax
+.flash_done:
+
+    ; Update muzzle flash light (Light 2)
+    mov rax, [rel player_x]
+    mov [rel light_x + 16], rax
+    mov rax, [rel player_y]
+    mov [rel light_y + 16], rax
+    
+    mov rax, [rel gun_fire_timer]
+    cmp rax, 4
+    jl .flash_off                       ; light is only ON for the first half of the animation
+    mov qword [rel light_i + 16], 10    ; bright flash
+    jmp .flash_update_done
+.flash_off:
+    mov qword [rel light_i + 16], 0     ; light off
+.flash_update_done:
+
+    ; Update pulsing light (Light 1) based on frame_count
+    mov rax, [rel frame_count]
+    and rax, 16                         ; toggle every 16 frames
+    jz .pulse_dim
+    mov qword [rel light_i + 8], 6
+    jmp .pulse_done
+.pulse_dim:
+    mov qword [rel light_i + 8], 1
+.pulse_done:
+
+    call update_enemies
+
+    pop r13
+    pop r12
+    pop rbx
+    pop rbp
+    ret
+
+; --- ENEMY AI & MOVEMENT ---
+update_enemies:
+    push rbp
+    mov rbp, rsp
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    
+    extern sprite_x, sprite_y, sprite_type, enemy_sprite_idx
+    
+    xor r15, r15                ; i = 0
+.ai_loop:
+    cmp r15, 2                  ; NUM_ENEMIES
+    jge .ai_done
+    
+    lea rdx, [rel enemy_state]
+    mov al, [rdx + r15]
+    cmp al, 3                   ; Dead
+    je .ai_update_sprite
+    cmp al, 0                   ; Inactive
+    je .ai_next
+    
+    cmp al, 2                   ; Hurt
+    jne .ai_chase
+    ; Hurt state cooldown
+    lea rdx, [rel enemy_timer]
+    mov al, [rdx + r15]
+    dec al
+    mov [rdx + r15], al
+    test al, al
+    jnz .ai_update_sprite       ; still stunned
+    lea rdx, [rel enemy_state]
+    mov byte [rdx + r15], 1     ; return to Chase state
+    jmp .ai_chase
+    
+.ai_chase:
+    ; dx = player_x - enemy_x
+    mov rbx, [rel player_x]
+    lea rdx, [rel enemy_x]
+    sub rbx, [rdx + r15*8]      ; rbx = dx
+    
+    ; dy = player_y - enemy_y
+    mov rcx, [rel player_y]
+    lea rdx, [rel enemy_y]
+    sub rcx, [rdx + r15*8]      ; rcx = dy
+    
+    ; Rough distance: abs(dx) + abs(dy)
+    mov r10, rbx
+    mov rax, r10
+    sar rax, 63
+    xor r10, rax
+    sub r10, rax
+    
+    mov r11, rcx
+    mov rax, r11
+    sar rax, 63
+    xor r11, rax
+    sub r11, rax
+    
+    add r10, r11
+    
+    cmp r10, 4096               ; 16 cells detection range
+    jg .ai_update_sprite        ; too far, don't move
+    cmp r10, 192                ; 0.75 cells attack range
+    jl .ai_attack
+    
+    ; Move X
+    mov r12, 4                  ; ENEMY_SPEED = 4 (Q8)
+    test rbx, rbx
+    jns .dx_pos
+    neg r12
+.dx_pos:
+    lea rdx, [rel enemy_x]
+    mov rax, [rdx + r15*8]
+    add rax, r12                ; proposed new_x
+    mov r13, rax
+    sar r13, 8                  ; map_x
+    lea rdx, [rel enemy_y]
+    mov r14, [rdx + r15*8]
+    sar r14, 8                  ; map_y
+    imul r14, MAP_WIDTH
+    add r14, r13                ; cell index
+    
+    push rcx                    ; is_passable clobbers rcx
+    push rax
+    mov rax, r14
+    call is_passable
+    test eax, eax
+    pop rax
+    pop rcx                     ; restore rcx (dy)
+    
+    jz .ai_move_y
+    lea rdx, [rel enemy_x]
+    mov [rdx + r15*8], rax      ; commit X move
+    
+.ai_move_y:
+    mov r12, 4                  ; ENEMY_SPEED = 4
+    test rcx, rcx
+    jns .dy_pos
+    neg r12
+.dy_pos:
+    lea rdx, [rel enemy_y]
+    mov rax, [rdx + r15*8]
+    add rax, r12                ; proposed new_y
+    mov r13, rax
+    sar r13, 8                  ; map_y
+    lea rdx, [rel enemy_x]
+    mov r14, [rdx + r15*8]
+    sar r14, 8                  ; map_x (possibly updated)
+    imul r13, MAP_WIDTH
+    add r14, r13                ; cell index
+    push rax
+    mov rax, r14
+    call is_passable
+    test eax, eax
+    pop rax
+    jz .ai_update_sprite
+    lea rdx, [rel enemy_y]
+    mov [rdx + r15*8], rax      ; commit Y move
+    jmp .ai_update_sprite
+
+.ai_attack:
+    ; Deal damage (e.g. 10 damage every 32 frames)
+    mov rax, [rel frame_count]
+    and rax, 31
+    jnz .ai_update_sprite
+    
+    mov rax, [rel player_health]
+    sub rax, 10
+    jns .health_ok
+    xor rax, rax                ; cap at 0
+.health_ok:
+    mov [rel player_health], rax
+    cmp rax, 0
+    jg .ai_update_sprite
+    
+    ; Game Over!
+    mov qword [rel game_over_flag], 1
+
+.ai_update_sprite:
+    ; Sync enemy_x/y to sprite_x/y
+    lea rdx, [rel enemy_sprite_idx]
+    movzx r10, byte [rdx + r15] ; r10 = sprite index
+    
+    lea rdx, [rel enemy_x]
+    mov rax, [rdx + r15*8]
+    lea rdx, [rel sprite_x]
+    mov [rdx + r10*8], rax
+    
+    lea rdx, [rel enemy_y]
+    mov rax, [rdx + r15*8]
+    lea rdx, [rel sprite_y]
+    mov [rdx + r10*8], rax
+    
+    ; Update sprite type based on state
+    lea rdx, [rel enemy_state]
+    mov al, [rdx + r15]
+    mov bl, 3                   ; Sprite type 3 = Alive Enemy
+    cmp al, 3
+    jne .set_type
+    mov bl, 4                   ; Sprite type 4 = Dead Enemy
+.set_type:
+    lea rdx, [rel sprite_type]
+    mov [rdx + r10], bl
+
+.ai_next:
+    inc r15
+    jmp .ai_loop
+
+.ai_done:
+    pop r15
+    pop r14
     pop r13
     pop r12
     pop rbx
@@ -459,12 +800,14 @@ cast_ray:
     jge .perp_ok
     mov rax, 1                       ; clamp: minimum distance 1 (avoids /0)
 .perp_ok:
+    mov rcx, rdx                     ; return side in rcx
     mov rdx, r8                      ; return wall type in rdx
     jmp .ray_done
 
 .hit_far:
     mov rax, MAP_HEIGHT * 1024       ; ray escaped: return maximum distance
     mov rdx, 1                       ; default to stone
+    xor rcx, rcx                     ; default side 0
 
 .ray_done:
     pop r15
@@ -474,3 +817,29 @@ cast_ray:
     pop rbx
     pop rbp
     ret
+
+section .data
+    global num_lights
+    global light_x, light_y, light_r, light_i, light_type
+    
+    ; 0 = static white, 1 = pulsing red, 2 = muzzle flash
+    num_lights dq 3
+    
+    ; Light 0: Static light in central corridor (near 16, 16)
+    ; Light 1: Pulsing alarm light in brick room (near 5, 5)
+    ; Light 2: Muzzle flash (attached to player, initially off)
+    light_x: dq 16*256 + 128,  5*256 + 128,  0
+    light_y: dq 16*256 + 128,  5*256 + 128,  0
+    
+    ; radius squared (in 256-units) to avoid sqrt
+    ; e.g. 5 cells = 5*256 = 1280. squared = 1638400
+    light_r: dq 1638400, 1000000, 2000000
+    
+    ; Intensity (0=off, higher=brighter)
+    light_i: dq 4, 3, 0
+    
+    ; Type for colors
+    light_type: dq 0, 1, 2
+
+    global gun_fire_timer
+    gun_fire_timer dq 0

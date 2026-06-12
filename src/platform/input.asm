@@ -4,12 +4,13 @@ section .bss
 poll_fd: resb 8
 key_buffer: resb 8
 
-global key_up, key_down, key_left, key_right, key_use, quit_flag, any_key
+global key_up, key_down, key_left, key_right, key_use, key_shoot, quit_flag, any_key
 key_up:    resb 1
 key_down:  resb 1
 key_left:  resb 1
 key_right: resb 1
 key_use:   resb 1
+key_shoot: resb 1
 quit_flag: resb 1
 any_key:   resb 1
 
@@ -91,6 +92,11 @@ process_input:
     je .set_quit
     cmp al, 'Q'
     je .set_quit
+    cmp al, ' '
+    je .set_shoot
+    jmp .read_loop
+.set_shoot:
+    mov byte [rel key_shoot], 1
     jmp .read_loop
 .set_use:
     mov byte [rel key_use], 1

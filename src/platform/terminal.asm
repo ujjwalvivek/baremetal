@@ -241,6 +241,7 @@ get_terminal_size:
     movzx rax, word [rel winsize]
     mov [rel term_rows], rax
     movzx rax, word [rel winsize + 2]
+    dec rax                          ; safety margin of 1 column to prevent wrapping/spillage
     mov [rel term_cols], rax
 
     ; Sanity fallback: if 0, default to 80x24

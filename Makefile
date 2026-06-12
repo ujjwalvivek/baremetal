@@ -1,9 +1,9 @@
 ASM      = nasm
-ASMFLAGS = -f elf64 -g -F dwarf
+ASMFLAGS = -f elf64 -g -F dwarf -I src/render/
 LD       = ld
 LDFLAGS  = -static
 
-SRCS = entry.asm terminal.asm render.asm input.asm timing.asm math.asm game.asm
+SRCS = src/core/entry.asm src/platform/terminal.asm src/render/render.asm src/platform/input.asm src/platform/timing.asm src/math/math.asm src/core/game.asm
 OBJS = $(SRCS:.asm=.o)
 TARGET = baremetal
 
