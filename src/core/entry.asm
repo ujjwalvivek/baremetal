@@ -39,10 +39,21 @@ _start:
     call process_input
     cmp byte [rel quit_flag], 1
     je .shutdown
+    cmp byte [rel key_use], 1
+    je .enter_editor
     cmp byte [rel any_key], 1
     je .game_loop
     mov rdi, 50000000           ; 50ms poll: no busy-wait
     call sleep_remaining
+    jmp .start_screen_loop
+
+.enter_editor:
+    extern run_editor
+    mov byte [rel key_use], 0
+    mov byte [rel any_key], 0
+    call run_editor
+    call render_init
+    call render_start_screen
     jmp .start_screen_loop
 
 .game_loop:

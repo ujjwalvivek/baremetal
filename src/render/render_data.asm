@@ -201,6 +201,23 @@ wall_color_lens:
         db 27, '[97m', 0xE2, 0x94, 0x82   ; [esc_white] │
     ss_box_ctrl4_len equ $ - ss_box_ctrl4
 
+    ss_box_div:
+        db 27, '[97m'
+        db 0xE2, 0x94, 0x9C          ; ├
+        db 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80
+        db 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80
+        db 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80, 0xE2, 0x94, 0x80
+        db 0xE2, 0x94, 0xA4          ; ┤
+    ss_box_div_len equ $ - ss_box_div
+
+    ss_box_ctrl5:
+        db 27, '[97m', 0xE2, 0x94, 0x82   ; │
+        db 27, '[93m', "  E     "            ; keys
+        db 27, '[97m', 0xE2, 0x94, 0x82   ; │
+        db 27, '[97m', " toggle map editor  "   ; desc
+        db 27, '[97m', 0xE2, 0x94, 0x82   ; │
+    ss_box_ctrl5_len equ $ - ss_box_ctrl5
+
     ss_box_bot:
         db 27, '[97m'                ; esc_white_fg
         db 0xE2, 0x94, 0x94          ; └
@@ -212,6 +229,40 @@ wall_color_lens:
     ss_box_bot_len equ $ - ss_box_bot
     ss_prompt: db "[ PRESS ANY KEY TO START ]"
     ss_prompt_len equ $ - ss_prompt
+
+    ; Minimap cell styles matching the editor
+    mmap_cell_empty:  db 27, '[90m', '.', 27, '[0m'
+    mmap_cell_empty_len equ $ - mmap_cell_empty
+
+    mmap_cell_stone:  db 27, '[37m', 0xE2, 0x96, 0x88, 27, '[0m'
+    mmap_cell_stone_len equ $ - mmap_cell_stone
+
+    mmap_cell_brick:  db 27, '[31m', 0xE2, 0x96, 0x88, 27, '[0m'
+    mmap_cell_brick_len equ $ - mmap_cell_brick
+
+    mmap_cell_metal:  db 27, '[36m', 0xE2, 0x96, 0x88, 27, '[0m'
+    mmap_cell_metal_len equ $ - mmap_cell_metal
+
+    mmap_cell_wood:   db 27, '[33m', 0xE2, 0x96, 0x88, 27, '[0m'
+    mmap_cell_wood_len equ $ - mmap_cell_wood
+
+    mmap_cell_door:   db 27, '[32m', 'D', 27, '[0m'
+    mmap_cell_door_len equ $ - mmap_cell_door
+
+    mmap_cell_player_prefix: db 27, '[35;1m'
+    mmap_cell_player_prefix_len equ $ - mmap_cell_player_prefix
+
+    mmap_cell_barrel: db 27, '[33m', 'B', 27, '[0m'
+    mmap_cell_barrel_len equ $ - mmap_cell_barrel
+
+    mmap_cell_pillar: db 27, '[32m', 'L', 27, '[0m'
+    mmap_cell_pillar_len equ $ - mmap_cell_pillar
+
+    mmap_cell_key:    db 27, '[33;1m', 'K', 27, '[0m'
+    mmap_cell_key_len equ $ - mmap_cell_key
+
+    mmap_cell_enemy:  db 27, '[31;1m', 'E', 27, '[0m'
+    mmap_cell_enemy_len equ $ - mmap_cell_enemy
 
     ; HUD strings
     hud_fps:   db " FPS:"
@@ -252,6 +303,15 @@ wall_color_lens:
     go_pixel_len equ $ - go_pixel_txt
     go_sub_txt:   db "[ PRESS Q TO QUIT ]"
     go_sub_len equ $ - go_sub_txt
+
+    vic_pixel_txt: db "YOU WIN"
+    vic_pixel_len equ $ - vic_pixel_txt
+    vic_sub_txt:   db "[ PRESS Q TO QUIT ]"
+    vic_sub_len equ $ - vic_sub_txt
+    
+    esc_green_bg_only: db 27, '[42m'
+    esc_green_bg_only_len equ $ - esc_green_bg_only
+
 
     global font_table
     font_table:

@@ -73,12 +73,13 @@ world_map:
 
 section .bss
 
-global player_x, player_y, player_angle, player_health, game_over_flag
+global player_x, player_y, player_angle, player_health, game_over_flag, victory_flag
 player_x:     resq 1           ; Q8 fixed-point X  (real pos = player_x >> 8)
 player_y:     resq 1           ; Q8 fixed-point Y  (real pos = player_y >> 8)
 player_angle: resq 1           ; 0..359 degrees (direct LUT index)
 player_health: resq 1          ; 0..100
 game_over_flag: resq 1         ; 0=playing, 1=dead
+victory_flag:   resq 1         ; 0=playing, 1=won
 
 global door_state
 door_state:   resb MAP_WIDTH * MAP_HEIGHT   ; 0=closed, 1=open (parallel to world_map)
@@ -100,9 +101,142 @@ init_game:
     mov qword [rel player_angle], 0
     mov qword [rel player_health], 100
     mov qword [rel game_over_flag], 0
+    mov qword [rel victory_flag], 0
+
+    call load_level
 
     pop rbp
     ret
+
+; Load level from level.bin if it exists
+load_level:
+    push rbp
+    mov rbp, rsp
+    push rbx
+    push r12
+    push r13
+
+    ; sys_open("level.bin", O_RDONLY)
+    mov rax, 2                  ; sys_open
+    lea rdi, [rel level_filename]
+    xor rsi, rsi                ; O_RDONLY = 0
+    xor rdx, rdx
+    syscall
+    test rax, rax
+    js .done                    ; if failed (e.g. doesn't exist), just return and keep defaults
+    
+    mov rbx, rax                ; rbx = fd
+    
+    ; sys_read(fd, level_load_buffer, 1192)
+    mov rax, 0                  ; sys_read
+    mov rdi, rbx                ; fd
+    lea rsi, [rel level_load_buffer]
+    mov rdx, 1192
+    syscall
+    
+    ; sys_close(fd)
+    mov rax, 3                  ; sys_close
+    mov rdi, rbx
+    syscall
+
+    ; Copy loaded data from buffer to active game variables
+    lea rsi, [rel level_load_buffer]
+    
+    ; 1. player_x (offset 0)
+    mov rax, [rsi]
+    mov [rel player_x], rax
+    
+    ; 2. player_y (offset 8)
+    mov rax, [rsi + 8]
+    mov [rel player_y], rax
+    
+    ; 3. player_angle (offset 16)
+    mov rax, [rsi + 16]
+    mov [rel player_angle], rax
+    
+    ; 4. world_map (offset 24, 1024 bytes)
+    lea rdi, [rel world_map]
+    lea rsi, [rel level_load_buffer + 24]
+    mov rcx, 1024
+    rep movsb
+    
+    ; 5. sprite_x (offset 1048, 64 bytes)
+    extern sprite_x, sprite_y, sprite_type, sprite_active
+    lea rdi, [rel sprite_x]
+    lea rsi, [rel level_load_buffer + 1048]
+    mov rcx, 64
+    rep movsb
+    
+    ; 6. sprite_y (offset 1112, 64 bytes)
+    lea rdi, [rel sprite_y]
+    lea rsi, [rel level_load_buffer + 1112]
+    mov rcx, 64
+    rep movsb
+    
+    ; 7. sprite_type (offset 1176, 8 bytes)
+    lea rdi, [rel sprite_type]
+    lea rsi, [rel level_load_buffer + 1176]
+    mov rcx, 8
+    rep movsb
+    
+    rep movsb
+
+    ; Sync enemy states and positions from sprite 6 and 7
+    extern enemy_x, enemy_y, enemy_state, enemy_health
+    
+    ; Enemy 0 (sprite 6)
+    lea rax, [rel sprite_active]
+    movzx ecx, byte [rax + 6]
+    lea rdx, [rel enemy_state]
+    mov [rdx], cl               ; if active=1, state=1 (Idle/Patrol). if active=0, state=0 (Dead)
+    
+    lea rax, [rel sprite_x]
+    mov rcx, [rax + 6*8]
+    lea rdx, [rel enemy_x]
+    mov [rdx], rcx
+    
+    lea rax, [rel sprite_y]
+    mov rcx, [rax + 6*8]
+    lea rdx, [rel enemy_y]
+    mov [rdx], rcx
+    
+    lea rdx, [rel enemy_health]
+    mov byte [rdx], 100
+    
+    ; Enemy 1 (sprite 7)
+    lea rax, [rel sprite_active]
+    movzx ecx, byte [rax + 7]
+    lea rdx, [rel enemy_state]
+    mov [rdx + 1], cl
+    
+    lea rax, [rel sprite_x]
+    mov rcx, [rax + 7*8]
+    lea rdx, [rel enemy_x]
+    mov [rdx + 8], rcx
+    
+    lea rax, [rel sprite_y]
+    mov rcx, [rax + 7*8]
+    lea rdx, [rel enemy_y]
+    mov [rdx + 8], rcx
+    
+    lea rdx, [rel enemy_health]
+    mov byte [rdx + 1], 100
+
+
+.done:
+    pop r13
+    pop r12
+    pop rbx
+    pop rbp
+    ret
+
+section .data
+    level_filename db "level.bin", 0
+
+section .bss
+    level_load_buffer: resb 1192
+
+section .text
 
 ; is_passable: check if cell at index rax is walkable
 ; In: rax = cell index (row*MAP_WIDTH + col)
@@ -187,6 +321,8 @@ update_game:
     push r13
 
     cmp qword [rel game_over_flag], 1
+    je .game_over_skip_input
+    cmp qword [rel victory_flag], 1
     je .game_over_skip_input
 
     cmp byte [rel key_left], 1
@@ -434,6 +570,50 @@ update_game:
 
     call update_enemies
 
+    ; --- Check Win Condition ---
+    ; Condition: open all doors AND kill all enemies on the map
+    
+    ; 1. Check if all enemies are dead
+    xor rcx, rcx                ; index = 0
+.check_enemy_alive:
+    cmp rcx, 2                  ; NUM_ENEMIES
+    jge .all_enemies_dead
+    lea rdx, [rel enemy_state]
+    mov al, [rdx + rcx]
+    cmp al, 1                   ; Chase/Idle
+    je .win_not_met
+    cmp al, 2                   ; Hurt
+    je .win_not_met
+    inc rcx
+    jmp .check_enemy_alive
+
+.all_enemies_dead:
+    ; 2. Check if all doors are open
+    xor rcx, rcx                ; cell index = 0
+.check_doors_loop:
+    cmp rcx, 1024
+    jge .all_doors_open         ; checked all cells and they are all open!
+    
+    lea rdx, [rel world_map]
+    cmp byte [rdx + rcx], 5     ; WALL_DOOR = 5
+    jne .next_cell
+    
+    lea rdx, [rel door_state]
+    cmp byte [rdx + rcx], 0     ; 0 = closed
+    je .win_not_met             ; closed door found -> win conditions not met!
+    
+.next_cell:
+    inc rcx
+    jmp .check_doors_loop
+
+.all_doors_open:
+    mov qword [rel victory_flag], 1
+    jmp .win_done
+
+.win_not_met:
+    mov qword [rel victory_flag], 0
+
+.win_done:
     pop r13
     pop r12
     pop rbx

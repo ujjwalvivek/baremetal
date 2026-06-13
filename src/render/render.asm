@@ -1,16 +1,12 @@
 %include "render_data.asm"
 %include "render_utils.asm"
-; border + blank interior, called once at startup
-render_init:
-    push rbp
-    mov rbp, rsp
+global draw_screen_border
+draw_screen_border:
     push rbx
     push r12
     push r13
     push r14
     push r15
-
-    call clear_buffer
 
     mov r14, [rel term_cols]
     mov r15, [rel term_rows]
@@ -94,6 +90,25 @@ render_init:
     mov rcx, 3
     call draw_bytes_at
 
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+
+; border + blank interior, called once at startup
+render_init:
+    push rbp
+    mov rbp, rsp
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+
+    call clear_buffer
+    call draw_screen_border
     call flush_buffer
 
     pop r15
@@ -530,16 +545,20 @@ render_frame:
     sar rax, 8
     sub rax, [rsp + 16]
     cmp rcx, rax
-    jne .mm_check_wall
+    jne .mm_check_sprites
 
     ; player minimap y: rax = player_y>>8 - mmap_oy
     mov rax, [rel player_y]
     sar rax, 8
     sub rax, [rsp + 24]
     cmp r12, rax
-    jne .mm_check_wall
+    jne .mm_check_sprites
 
-    ; directional player marker based on player_angle
+    ; directional player marker based on player_angle (in pink)
+    lea rsi, [rel mmap_cell_player_prefix]
+    mov rcx, mmap_cell_player_prefix_len
+    call append_bytes
+
     mov rax, [rel player_angle]
     cmp rax, 45
     jl .mm_dir_east
@@ -565,6 +584,7 @@ render_frame:
     mov [rdi], dl
     inc rdi
     mov [rel buf_pos], rdi
+    call emit_color_reset
     jmp .col_next
 
 .mm_vert:
@@ -577,42 +597,147 @@ render_frame:
     mov [rel buf_pos], rdi
     jmp .col_next
 
+.mm_check_sprites:
+    ; mx is rcx + mmap_ox
+    mov r8, rcx
+    add r8, [rsp + 16]              ; r8 = mx
+    ; my is r12 + mmap_oy
+    mov r9, r12
+    add r9, [rsp + 24]              ; r9 = my
+
+    xor r10, r10                    ; sprite index = 0
+.mm_sprite_loop:
+    cmp r10, NUM_SPRITES
+    jge .mm_check_wall
+    
+    lea rax, [rel sprite_active]
+    cmp byte [rax + r10], 1
+    jne .mm_sprite_next
+    
+    lea rax, [rel sprite_x]
+    mov rdx, [rax + r10*8]
+    sar rdx, 8
+    cmp rdx, r8
+    jne .mm_sprite_next
+    
+    lea rax, [rel sprite_y]
+    mov rdx, [rax + r10*8]
+    sar rdx, 8
+    cmp rdx, r9
+    je .mm_sprite_found
+    
+.mm_sprite_next:
+    inc r10
+    jmp .mm_sprite_loop
+
+.mm_sprite_found:
+    lea rax, [rel sprite_type]
+    movzx eax, byte [rax + r10]
+    cmp al, 0
+    je .mm_spr_barrel
+    cmp al, 1
+    je .mm_spr_pillar
+    cmp al, 2
+    je .mm_spr_key
+    cmp al, 3
+    je .mm_spr_enemy
+    jmp .mm_check_wall              ; fallback
+
+.mm_spr_barrel:
+    lea rsi, [rel mmap_cell_barrel]
+    mov rcx, mmap_cell_barrel_len
+    call append_bytes
+    jmp .col_next
+
+.mm_spr_pillar:
+    lea rsi, [rel mmap_cell_pillar]
+    mov rcx, mmap_cell_pillar_len
+    call append_bytes
+    jmp .col_next
+
+.mm_spr_key:
+    lea rsi, [rel mmap_cell_key]
+    mov rcx, mmap_cell_key_len
+    call append_bytes
+    jmp .col_next
+
+.mm_spr_enemy:
+    lea rsi, [rel mmap_cell_enemy]
+    mov rcx, mmap_cell_enemy_len
+    call append_bytes
+    jmp .col_next
+
 .mm_check_wall:
+    ; Recalculate my
     mov rax, r12
     add rax, [rsp + 24]             ; rax = r12 + mmap_oy
-    imul rax, MAP_WIDTH             ; rax = (r12 + mmap_oy) * MAP_WIDTH
-    mov rbx, rcx
-    add rbx, [rsp + 16]             ; rbx = minimap_x + mmap_ox
+    imul rax, MAP_WIDTH
+    
+    ; Recalculate mx
+    mov rbx, r13
+    sub rbx, [rel mmap_content_col]
+    add rbx, [rsp + 16]             ; rbx = mx + mmap_ox
+    
     add rax, rbx                    ; rax = cell index in world_map
 
     lea rbx, [rel world_map]
     movzx ebx, byte [rbx + rax]     ; ebx = cell value
-    mov rdi, [rel buf_pos]
+    
     test ebx, ebx
-    jz .mm_floor
-
+    jz .mm_empty
+    
     cmp ebx, WALL_DOOR
-    jne .mm_wall
+    je .mm_door
+    
+    cmp ebx, 1
+    je .mm_stone
+    cmp ebx, 2
+    je .mm_brick
+    cmp ebx, 3
+    je .mm_metal
+    cmp ebx, 4
+    je .mm_wood
+    jmp .mm_empty                   ; fallback
 
-    ; door cell: check door_state[rax]
+.mm_empty:
+    lea rsi, [rel mmap_cell_empty]
+    mov rcx, mmap_cell_empty_len
+    call append_bytes
+    jmp .col_next
+
+.mm_stone:
+    lea rsi, [rel mmap_cell_stone]
+    mov rcx, mmap_cell_stone_len
+    call append_bytes
+    jmp .col_next
+
+.mm_brick:
+    lea rsi, [rel mmap_cell_brick]
+    mov rcx, mmap_cell_brick_len
+    call append_bytes
+    jmp .col_next
+
+.mm_metal:
+    lea rsi, [rel mmap_cell_metal]
+    mov rcx, mmap_cell_metal_len
+    call append_bytes
+    jmp .col_next
+
+.mm_wood:
+    lea rsi, [rel mmap_cell_wood]
+    mov rcx, mmap_cell_wood_len
+    call append_bytes
+    jmp .col_next
+
+.mm_door:
+    ; check door_state[rax]
     lea rdx, [rel door_state]
     cmp byte [rdx + rax], 0
-    jne .mm_floor                    ; door open -> show floor '.'
+    jne .mm_empty                   ; open door -> show floor empty '.'
 
-    ; door closed -> show '+'
-    mov byte [rdi], '+'
-    jmp .mm_emit
-
-.mm_wall:
-    mov byte [rdi], '#'
-    jmp .mm_emit
-
-.mm_floor:
-    mov byte [rdi], '.'
-
-.mm_emit:
-    inc rdi
-    mov [rel buf_pos], rdi
+    lea rsi, [rel mmap_cell_door]
+    mov rcx, mmap_cell_door_len
+    call append_bytes
     jmp .col_next
 
 .raycaster_col:
@@ -1372,6 +1497,11 @@ render_frame:
     cmp qword [rel game_over_flag], 1
     je .draw_game_over
 
+    ; --- Check Victory Screen ---
+    extern victory_flag
+    cmp qword [rel victory_flag], 1
+    je .draw_victory_screen
+
     ; --- Draw Gun HUD ---
     extern gun_fire_timer
 
@@ -1586,6 +1716,104 @@ render_frame:
 
     call emit_color_reset
     jmp .frame_finish
+
+.draw_victory_screen:
+    ; Reset buf_pos to start of frame_buffer to wipe out the rendered frame!
+    lea rax, [rel frame_buffer]
+    mov [rel buf_pos], rax
+    
+    ; Add cursor home and sync start
+    lea rsi, [rel esc_cursor_home]
+    mov rcx, esc_cursor_home_len
+    mov rdi, [rel buf_pos]
+    cld
+    rep movsb
+    
+    lea rsi, [rel esc_sync_start]
+    mov rcx, esc_sync_start_len
+    rep movsb
+    mov [rel buf_pos], rdi
+
+    ; Set green background
+    lea rsi, [rel esc_green_bg_only]
+    mov rcx, esc_green_bg_only_len
+    call append_bytes
+
+    ; Fill the screen area (row 2..term_rows-1) with spaces to make it entirely green
+    mov r12, 2                  ; r12 = row
+.vic_fill_row_loop:
+    mov rax, [rel term_rows]
+    dec rax                     ; term_rows - 1
+    cmp r12, rax
+    jg .vic_fill_done
+
+    mov rdi, r12
+    mov rsi, 2
+    call append_cursor_move
+
+    ; Write term_cols - 2 spaces
+    mov rcx, [rel term_cols]
+    sub rcx, 2                  ; rcx = columns to fill
+    mov rdi, [rel buf_pos]
+.vic_space_loop:
+    mov byte [rdi], ' '
+    inc rdi
+    dec rcx
+    jnz .vic_space_loop
+    mov [rel buf_pos], rdi
+
+    inc r12
+    jmp .vic_fill_row_loop
+
+.vic_fill_done:
+    ; Set black foreground for block letters
+    lea rsi, [rel esc_black_fg]
+    mov rcx, esc_black_fg_len
+    call append_bytes
+
+    ; Center big "YOU WIN" (7 chars * 6 - 1 = 41 cols wide, 5 rows high)
+    mov rdi, [rel term_rows]
+    sar rdi, 1
+    sub rdi, 3                  ; row = term_rows / 2 - 3
+    
+    mov rsi, [rel term_cols]
+    sub rsi, 41                 ; term_cols - 41
+    sar rsi, 1                  ; / 2
+    inc rsi                     ; + 1
+    cmp rsi, 2
+    jge .vic_col_ok
+    mov rsi, 2
+.vic_col_ok:
+
+    lea rdx, [rel vic_pixel_txt]
+    mov rcx, vic_pixel_len
+    call draw_pixel_str
+
+    ; Set yellow foreground for subtitle
+    lea rsi, [rel esc_yellow_fg]
+    mov rcx, esc_yellow_fg_len
+    call append_bytes
+
+    ; Center subtitle (19 chars wide)
+    mov rdi, [rel term_rows]
+    sar rdi, 1
+    add rdi, 4                  ; row = term_rows / 2 + 4
+    
+    mov rsi, [rel term_cols]
+    sub rsi, 19                 ; term_cols - 19
+    sar rsi, 1
+    inc rsi
+    cmp rsi, 2
+    jge .vic_sub_col_ok
+    mov rsi, 2
+.vic_sub_col_ok:
+
+    lea rdx, [rel vic_sub_txt]
+    mov rcx, vic_sub_len
+    call draw_bytes_at
+
+    call emit_color_reset
+    jmp .draw_hud
 
 .draw_game_over:
     ; Reset buf_pos to start of frame_buffer to wipe out the rendered frame!

@@ -5,7 +5,7 @@ LDFLAGS  = -static
 
 SRCS = src/core/entry.asm src/platform/terminal.asm src/render/render.asm \
        src/platform/input.asm src/platform/timing.asm src/math/math.asm \
-       src/core/game.asm
+       src/core/game.asm src/core/editor.asm
 OBJS = $(SRCS:.asm=.o)
 TARGET = baremetal
 

@@ -19,7 +19,7 @@ SYS_READ equ 0
 SYS_POLL equ 7
 POLLIN   equ 0x0001
 
-global process_input
+global process_input, read_key
 
 poll_keyboard:
     mov dword [rel poll_fd], 0

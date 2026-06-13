@@ -90,6 +90,18 @@ render_start_screen:
 
     lea rdi, [r15 + 7]
     mov rsi, r12
+    lea rdx, [rel ss_box_div]
+    mov rcx, ss_box_div_len
+    call draw_bytes_at
+
+    lea rdi, [r15 + 8]
+    mov rsi, r12
+    lea rdx, [rel ss_box_ctrl5]
+    mov rcx, ss_box_ctrl5_len
+    call draw_bytes_at
+
+    lea rdi, [r15 + 9]
+    mov rsi, r12
     lea rdx, [rel ss_box_bot]
     mov rcx, ss_box_bot_len
     call draw_bytes_at
@@ -99,7 +111,7 @@ render_start_screen:
     mov rcx, esc_sprite_green_len
     call append_bytes
 
-    lea rdi, [r15 + 9]
+    lea rdi, [r15 + 11]
     lea rsi, [rel ss_prompt]
     mov rdx, ss_prompt_len
     call draw_centered_str

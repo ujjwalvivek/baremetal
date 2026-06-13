@@ -33,6 +33,8 @@ WALL_DOOR    equ 5
     global draw_bytes_at
     global render_start_screen
     global draw_pixel_str
+    global append_bytes
+    global append_cursor_move
 
 SYS_WRITE equ 1
 
@@ -557,6 +559,30 @@ draw_pixel_str:
     pop r12
     pop rbx
     pop rbp
+    ret
+
+global clear_terminal_screen
+clear_terminal_screen:
+    push rdi
+    push rsi
+    push rdx
+    push rcx
+    
+    sub rsp, 8
+    mov dword [rsp], 0x4a325b1b  ; ESC [ 2 J
+    mov dword [rsp+4], 0x00485b1b ; ESC [ H
+    
+    mov rax, 1                  ; sys_write
+    mov rdi, 1                  ; stdout
+    mov rsi, rsp
+    mov rdx, 7
+    syscall
+    
+    add rsp, 8
+    pop rcx
+    pop rdx
+    pop rsi
+    pop rdi
     ret
 
 
