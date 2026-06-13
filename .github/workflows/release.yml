@@ -1,0 +1,55 @@
+name: Release Baremetal
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm build-essential zip
+
+      - name: Build Binary
+        run: |
+          make clean
+          make
+
+      - name: Zip Binary
+        run: |
+          zip -j baremetal-linux-x64.zip baremetal
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: baremetal-linux-x64.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## Baremetal x86_64 Raycaster Release
+            
+            To run the game, download the attached `baremetal-linux-x64.zip` archive, extract the `baremetal` binary, and execute it:
+            
+            ```bash
+            unzip baremetal-linux-x64.zip
+            chmod +x baremetal
+            ./baremetal
+            ```
+            
+            ### Controls:
+            - **W / S / A / D**: Move forward/backward/strafe left/right
+            - **Left / Right arrow keys**: Look left/right
+            - **Space**: Shoot pistol
+            - **Q / ESC**: Exit game
