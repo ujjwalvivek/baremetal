@@ -239,20 +239,19 @@ get_terminal_size:
 
     ; winsize: ws_row (2 bytes at offset 0), ws_col (2 bytes at offset 2)
     movzx rax, word [rel winsize]
+    test rax, rax
+    jnz .rows_set
+    mov rax, 24
+.rows_set:
     mov [rel term_rows], rax
+
     movzx rax, word [rel winsize + 2]
+    test rax, rax
+    jnz .cols_set
+    mov rax, 80
+.cols_set:
     dec rax                          ; safety margin of 1 column to prevent wrapping/spillage
     mov [rel term_cols], rax
-
-    ; Sanity fallback: if 0, default to 80x24
-    cmp qword [rel term_rows], 0
-    jne .rows_ok
-    mov qword [rel term_rows], 24
-.rows_ok:
-    cmp qword [rel term_cols], 0
-    jne .cols_ok
-    mov qword [rel term_cols], 80
-.cols_ok:
 
     pop rbp
     ret
