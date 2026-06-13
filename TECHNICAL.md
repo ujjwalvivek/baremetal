@@ -429,6 +429,20 @@ Rather than fight terminal limitations for audio that no visitor will hear relia
 
 ---
 
+## No Linear Frame Buffer
+
+I attempted to build a 2D row-major character array in memory (LFB) to eliminate escape codes in the hot path, and flickeing on the web ttyd output. However:
+
+- Buffering into an intermediate 2D grid matrix and then translating it back to ANSI escapes at the end of the frame actually hurt memory throughput and caused cache thrashing.
+- Terminals natively consume streams of bytes, so appending directly to the `buf_pos` stream is fundamentally faster.
+- It forced all simple text rendering (HUD, Start Screen, Editor, Raycaster) to adopt a complex, pixel-by-pixel grid placement with manual color indexing.
+- It broke the simplicity of raw ANSI string manipulation.
+- Currently, I write one ANSI escape sequence per cell change. The LFB writes, then serialises the entire grid. For a typical frame where only a few cells change, the LFB does 8× more work.
+- The engine already runs fast. The LFB caused endless bugs (segfaults, flicker regressions, overlay overwrites) for zero tangible gameplay benefit.
+- The existing ANSI cursor-move approach already renders flicker-free on real terminals with the existing sync markers (`ESC[?2026h`).
+
+---
+
 ## PITFALLS & NOTES
 
 **Register clobbering**: Assembly has no variable names. Every function shares registers. Push/pop callee-saved registers (`rbx`, `r12`–`r15`) at function entry/exit. `rax`, `rcx`, `rdx`, `rsi`, `rdi`, `r8`–`r11` are caller-saved: assume destroyed after any call.
@@ -444,6 +458,10 @@ Rather than fight terminal limitations for audio that no visitor will hear relia
 **Terminal cleanup on crash**: Signal handlers for `SIGINT`/`SIGTERM`/`SIGSEGV` call `restore_terminal` before exit. If the terminal gets stuck anyway (e.g. `SIGKILL`), run `reset` to recover.
 
 **Synchronized output**: `ESC[?2026h` / `ESC[?2026l` (DEC private mode 2026) enables atomic updates on xterm.js. The terminal buffers all output between the begin/end markers and paints the entire frame at once, eliminating tearing.
+
+**The lighting system was premature.** The lighting adds complexity to the wall shading path (checking 3 lights per column) without enemies or gameplay to benefit from it yet. It's not broken, but it was out of sequence.
+
+**The `term_cols - 1` hack in terminal.asm** is a workaround for an escape-sequence wrapping bug, not a proper fix. The real issue is that the renderer doesn't account for the byte-width of escape codes when computing column positions. This will bite you again if you add more color complexity.
 
 ---
 
