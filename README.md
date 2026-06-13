@@ -42,11 +42,9 @@ baremetal/
 │       ├── render_data.asm   ; all data: colors, sprites, fonts, HUD strings
 │       ├── render_utils.asm  ; buffer helpers, cursor moves, pixel sprite drawing
 │       └── render_start.asm  ; start screen pixel-art rendering
-├── docs/
-│   ├── technical.md          ; full technical design document
-│   └── Audit.md              ; self-assessment and scaling roadmap
 ├── Makefile
 ├── LICENSE                   ; GPLv3
+├── TECHNICAL.md              ; full technical design document
 └── README.md
 ```
 

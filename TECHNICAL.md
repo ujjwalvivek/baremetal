@@ -63,7 +63,7 @@ File descriptors: `0` = stdin, `1` = stdout, `2` = stderr.
 
 ## MODULE STRUCTURE
 
-```
+```text
 baremetal/
 ├── src/
 │   ├── core/
@@ -80,12 +80,10 @@ baremetal/
 │       ├── render_data.asm   ; all data: colors, sprites, fonts, HUD strings
 │       ├── render_utils.asm  ; buffer helpers, cursor moves, pixel sprite drawing
 │       └── render_start.asm  ; start screen pixel-art rendering
-├── docs/
-│   ├── technical.md          ; this file
-│   └── Audit.md              ; strategic self-assessment
 ├── Makefile
 ├── LICENSE                   ; GPLv3
-└── README.md
+├── README.md
+└── TECHNICAL.md              ; this file
 ```
 
 Cross-module linkage is `global`/`extern` only. No shared headers: symbol names are the ABI.
@@ -140,7 +138,7 @@ Cross-module linkage is `global`/`extern` only. No shared headers: symbol names 
 
 **Key structs:**
 
-```
+```nasm
 termios (60 bytes, kernel layout):
   c_iflag   offset 0   (4 bytes)
   c_oflag   offset 4   (4 bytes)
@@ -179,14 +177,14 @@ sigaction (32 bytes, kernel layout):
 
 **elapsed_ns(rdi=start, rsi=end):** Returns nanoseconds in `rax`.
 
-```
+```text
 elapsed = (end.tv_sec - start.tv_sec) * 1_000_000_000
         + (end.tv_nsec - start.tv_nsec)
 ```
 
 **sleep_remaining(rdi=ns):** Frame sleeps are always < 1s, so:
 
-```
+```nasm
 time_sleep.tv_sec  = 0
 time_sleep.tv_nsec = rdi
 nanosleep(&time_sleep, NULL)
@@ -214,7 +212,7 @@ nanosleep(&time_sleep, NULL)
 
 **Player state:**
 
-```
+```nasm
 player_x:     resq 1    ; Q8 fixed-point X
 player_y:     resq 1    ; Q8 fixed-point Y
 player_angle: resq 1    ; 0..359 degrees (direct LUT index)
@@ -406,6 +404,31 @@ Makefile flags: `nasm -f elf64 -g -F dwarf -I src/render/` (DWARF debug symbols,
 
 ---
 
+## WHY AUDIO WAS DROPPED
+
+The game is silent by design. Here is the analysis:
+
+### Paths Considered
+
+| Approach                                                                   | Permissions Requirement                 | Verdict                                                        |
+| -------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------- |
+| `ioperm(0x42, 3, 1)` + `outb` to PIT channels 2 and system port 0x61       | Root/sudo (`CAP_SYS_RAWIO`)             | Fails: requires sudo for a web demo                            |
+| ALSA `open("/dev/snd/pcmC0D0p")` + `ioctl` + `write` PCM frames            | `audio` group membership                | Fails: violates zero-dependency thesis                         |
+| Write byte `0x07` to stdout; terminal plays system bell                    | None                                    | Browsers block by default, ttyd needs `-t enableBell=true`     |
+| Synthesize waveforms in assembly, write raw PCM to stdout, pipe to `aplay` | `aplay` needs audio on playback machine | No ttyd real-time feedback; possible as a post-hoc `.wav` dump |
+| JavaScript wrapper around ttyd reads audio events, plays via browser       | None                                    | reliable web audio path, but it is a JS project                |
+
+### The Honest Trade-off
+
+A DSP engine in assembly (ADSR envelopes, square/saw/noise oscillators, ring buffer mixer) is technically feasible. I have already written one in Rust and TypeScript for other engines. The math ports easily. The output path does not.
+
+Rather than fight terminal limitations for audio that no visitor will hear reliably, the silence won. Sound is deferred until either:
+
+- A clear cross-platform audio output emerges for web terminals (unlikely to change in the near term), or
+- A companion web page with Web Audio API synthesis is built as a separate wrapper (a JavaScript project, not an assembly one).
+
+---
+
 ## PITFALLS & NOTES
 
 **Register clobbering**: Assembly has no variable names. Every function shares registers. Push/pop callee-saved registers (`rbx`, `r12`–`r15`) at function entry/exit. `rax`, `rcx`, `rdx`, `rsi`, `rdi`, `r8`–`r11` are caller-saved: assume destroyed after any call.
@@ -424,17 +447,7 @@ Makefile flags: `nasm -f elf64 -g -F dwarf -I src/render/` (DWARF debug symbols,
 
 ---
 
-## REFERENCE
-
-| Resource                     | URL                                                                      |
-| ---------------------------- | ------------------------------------------------------------------------ |
-| x86-64 instruction reference | felixcloutier.com/x86                                                    |
-| Linux syscall table          | chromium.googlesource.com/chromiumos/docs/+/master/constants/syscalls.md |
-| NASM documentation           | nasm.us/doc                                                              |
-| Terminal escape codes        | invisible-island.net/xterm/ctlseqs/ctlseqs.html                          |
-| termios struct               | `man 3 termios`                                                          |
-
-**GDB workflow:**
+## GDB workflow
 
 ```bash
 gdb ./baremetal
@@ -445,3 +458,17 @@ gdb ./baremetal
 (gdb) x/32xb &world_map    # examine memory as hex bytes
 (gdb) x/gd &player_x       # read Q8 value
 ```
+
+---
+
+## REFERENCE
+
+| Resource                     | URL                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| x86-64 instruction reference | felixcloutier.com/x86                                                    |
+| Linux syscall table          | chromium.googlesource.com/chromiumos/docs/+/master/constants/syscalls.md |
+| NASM documentation           | nasm.us/doc                                                              |
+| Terminal escape codes        | invisible-island.net/xterm/ctlseqs/ctlseqs.html                          |
+| termios struct               | `man 3 termios`                                                          |
+
+---
