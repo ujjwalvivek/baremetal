@@ -1,6 +1,19 @@
 MAP_WIDTH  equ 32
 MAP_HEIGHT equ 32
 
+SPRITE_BARREL equ 0
+SPRITE_PILLAR equ 1
+SPRITE_KEY    equ 2
+SPRITE_ENEMY  equ 3
+SPRITE_CORPSE equ 4
+
+WALL_STONE equ 1
+WALL_BRICK equ 2
+WALL_METAL equ 3
+WALL_WOOD  equ 4
+WALL_DOOR  equ 5
+
+
 %macro DEFINE_SPRITE 3
     %1:
     %1_w equ %2
@@ -403,14 +416,14 @@ wall_color_lens:
         dq (22 << 8) | 128
 
     sprite_type:
-        db 0                 ; 0 = barrel
-        db 0                 ; 1 = barrel
-        db 1                 ; 2 = pillar
-        db 1                 ; 3 = pillar
-        db 2                 ; 4 = key
-        db 2                 ; 5 = key
-        db 3                 ; 6 = enemy
-        db 3                 ; 7 = enemy
+        db SPRITE_BARREL                 ; 0 = barrel
+        db SPRITE_BARREL                 ; 1 = barrel
+        db SPRITE_PILLAR                 ; 2 = pillar
+        db SPRITE_PILLAR                 ; 3 = pillar
+        db SPRITE_KEY                    ; 4 = key
+        db SPRITE_KEY                    ; 5 = key
+        db SPRITE_ENEMY                  ; 6 = enemy
+        db SPRITE_ENEMY                  ; 7 = enemy
 
     sprite_active:
         db 1, 1, 1, 1, 1, 1, 1, 1  ; all active

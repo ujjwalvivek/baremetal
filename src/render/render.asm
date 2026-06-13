@@ -2,6 +2,8 @@
 %include "render_utils.asm"
 global draw_screen_border
 draw_screen_border:
+    push rbp
+    mov rbp, rsp
     push rbx
     push r12
     push r13
@@ -95,6 +97,7 @@ draw_screen_border:
     pop r13
     pop r12
     pop rbx
+    pop rbp
     ret
 
 ; border + blank interior, called once at startup
@@ -364,7 +367,6 @@ render_frame:
     pop r9                      ; pop hit_y
     pop r8                      ; pop hit_x
     
-    extern num_lights, light_x, light_y, light_r, light_i
     push rdi
     mov rdi, [rel num_lights]
     xor r10, r10                ; max light intensity
@@ -487,7 +489,6 @@ render_frame:
 .floor_band_done:
     
     ; Flash override: if gun_fire_timer > 0, force band 2
-    extern gun_fire_timer
     mov rax, [rel gun_fire_timer]
     test rax, rax
     jz .floor_band_flash_done
@@ -1501,17 +1502,14 @@ render_frame:
     ; directly to target character rows/cols without camera projection 
     ; calculations or Z-buffer testing.    
     ; --- Check Game Over Overlay ---
-    extern game_over_flag
     cmp qword [rel game_over_flag], 1
     je .draw_game_over
 
     ; --- Check Victory Screen ---
-    extern victory_flag
     cmp qword [rel victory_flag], 1
     je .draw_victory_screen
 
     ; --- Draw Gun HUD ---
-    extern gun_fire_timer
 
     ; Compute scale-dependent dimensions
     ; Default to scale 1 (full size):
@@ -1575,9 +1573,9 @@ render_frame:
     lea rdx, [rel flash_sprite]
     mov rcx, flash_sprite_w
     mov r8, flash_sprite_h
-    ; r9 = target_width (already there)
-    mov r10, r12                ; target_flash_h
+    push r12                    ; target_flash_h (7th arg on stack)
     call draw_pixel_sprite_scaled_at
+    add rsp, 8
     
     call emit_color_reset
     pop r9
@@ -1605,9 +1603,9 @@ render_frame:
     lea rdx, [rel gun_sprite]
     mov rcx, gun_sprite_w
     mov r8, gun_sprite_h
-    ; r9 = target_width (already there)
-    ; r10 = target_gun_h (already there)
+    push r10                    ; target_gun_h (7th arg on stack)
     call draw_pixel_sprite_scaled_at
+    add rsp, 8
     
     pop r9
     pop r10
@@ -1631,9 +1629,9 @@ render_frame:
     lea rdx, [rel hand_sprite]
     mov rcx, hand_sprite_w
     mov r8, hand_sprite_h
-    ; r9 = target_width (already there)
-    mov r10, r11                ; target_hand_h
+    push r11                    ; target_hand_h (7th arg on stack)
     call draw_pixel_sprite_scaled_at
+    add rsp, 8
     
     call emit_color_reset
     pop rsi
@@ -1649,30 +1647,30 @@ render_frame:
     mov rcx, hud_fps_len
     call append_bytes
 
-    mov rax, [rel last_fps]
-    mov rdi, [rel buf_pos]
+    mov rdi, [rel last_fps]
+    mov rsi, [rel buf_pos]
     call int_to_ascii
-    mov [rel buf_pos], rdi
+    mov [rel buf_pos], rax
 
     lea rsi, [rel hud_pos]
     mov rcx, hud_pos_len
     call append_bytes
 
-    mov rax, [rel player_x]
-    sar rax, 8
-    mov rdi, [rel buf_pos]
+    mov rdi, [rel player_x]
+    sar rdi, 8
+    mov rsi, [rel buf_pos]
     call int_to_ascii
-    mov [rel buf_pos], rdi
+    mov [rel buf_pos], rax
 
     lea rsi, [rel hud_comma]
     mov rcx, hud_comma_len
     call append_bytes
 
-    mov rax, [rel player_y]
-    sar rax, 8
-    mov rdi, [rel buf_pos]
+    mov rdi, [rel player_y]
+    sar rdi, 8
+    mov rsi, [rel buf_pos]
     call int_to_ascii
-    mov [rel buf_pos], rdi
+    mov [rel buf_pos], rax
 
     lea rsi, [rel hud_ang]
     mov rcx, hud_ang_len
@@ -1692,28 +1690,27 @@ render_frame:
     inc rdi
     mov [rel buf_pos], rdi
 .ang_3dig:
-    mov rdi, [rel buf_pos]
+    mov rdi, rax
+    mov rsi, [rel buf_pos]
     call int_to_ascii
-    mov [rel buf_pos], rdi
+    mov [rel buf_pos], rax
 
     lea rsi, [rel hud_space]
     mov rcx, hud_space_len
     call append_bytes
 
     ; --- HP Overlay ---
-    extern player_health
     lea rsi, [rel hud_hp]
     mov rcx, hud_hp_len
     call append_bytes
 
-    mov rax, [rel player_health]
-    mov rdi, [rel buf_pos]
+    mov rdi, [rel player_health]
+    mov rsi, [rel buf_pos]
     call int_to_ascii
-    mov byte [rdi], ' '
-    inc rdi
-    mov [rel buf_pos], rdi
+    mov byte [rax], ' '
+    inc rax
+    mov [rel buf_pos], rax
 
-    extern game_over_flag
     cmp qword [rel game_over_flag], 1
     jne .no_game_over_text
     

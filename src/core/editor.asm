@@ -1,5 +1,24 @@
-; editor.asm: In-game map editor written in x86-64 assembly
 NUM_SPRITES equ 8
+
+LV_OFF_PLAYER_X      equ 0
+LV_OFF_PLAYER_Y      equ 8
+LV_OFF_PLAYER_ANGLE  equ 16
+LV_OFF_WORLD_MAP     equ 24
+LV_OFF_SPRITE_X      equ 1048
+LV_OFF_SPRITE_Y      equ 1112
+LV_OFF_SPRITE_TYPE   equ 1176
+LV_OFF_SPRITE_ACTIVE equ 1184
+LV_BUF_SIZE          equ 1192
+
+MAP_WIDTH        equ 32
+MAP_HEIGHT       equ 32
+
+EDITOR_HEIGHT    equ 23
+EDITOR_WIDTH     equ 34
+TICK_SLEEP_NS    equ 30000000
+VIEWPORT_HEIGHT  equ 18
+MAP_CELLS        equ MAP_WIDTH * MAP_HEIGHT
+
 section .data
     save_filename db "level.bin", 0
     
@@ -85,7 +104,7 @@ section .bss
 
 section .text
     global run_editor
-    extern clear_buffer, flush_buffer, draw_bytes_at, draw_char_at
+    extern clear_buffer, flush_buffer, draw_bytes_at
     extern append_bytes, append_cursor_move, read_key, sleep_remaining
     extern player_x, player_y, player_angle, world_map
     extern sprite_x, sprite_y, sprite_type, sprite_active
@@ -707,17 +726,17 @@ draw_status_bar:
     lea rsi, [rel status_pfx]
     mov rcx, status_pfx_len
     call append_bytes
-    mov rax, [rel cursor_x]
-    mov rdi, [rel buf_pos]
+    mov rdi, [rel cursor_x]
+    mov rsi, [rel buf_pos]
     call int_to_ascii
-    mov [rel buf_pos], rdi
+    mov [rel buf_pos], rax
     lea rsi, [rel status_comma]
     mov rcx, status_comma_len
     call append_bytes
-    mov rax, [rel cursor_y]
-    mov rdi, [rel buf_pos]
+    mov rdi, [rel cursor_y]
+    mov rsi, [rel buf_pos]
     call int_to_ascii
-    mov [rel buf_pos], rdi
+    mov [rel buf_pos], rax
     lea rsi, [rel status_cell]
     mov rcx, status_cell_len
     call append_bytes
@@ -781,10 +800,10 @@ draw_status_bar:
     lea rsi, [rel status_sprites]
     mov rcx, status_sprites_len
     call append_bytes
-    mov rax, r8
-    mov rdi, [rel buf_pos]
+    mov rdi, r8
+    mov rsi, [rel buf_pos]
     call int_to_ascii
-    mov [rel buf_pos], rdi
+    mov [rel buf_pos], rax
     lea rsi, [rel status_slash8]
     mov rcx, status_slash8_len
     call append_bytes
@@ -822,32 +841,32 @@ save_level:
     sub rsp, 1200
     mov rdi, rsp
     mov rax, [rel player_x]
-    mov [rdi], rax
+    mov [rdi + LV_OFF_PLAYER_X], rax
     mov rax, [rel player_y]
-    mov [rdi + 8], rax
+    mov [rdi + LV_OFF_PLAYER_Y], rax
     mov rax, [rel player_angle]
-    mov [rdi + 16], rax
-    add rdi, 24
+    mov [rdi + LV_OFF_PLAYER_ANGLE], rax
+    add rdi, LV_OFF_WORLD_MAP
     lea rsi, [rel world_map]
     mov rcx, 1024
     rep movsb
     mov rdi, rsp
-    add rdi, 1048
+    add rdi, LV_OFF_SPRITE_X
     lea rsi, [rel sprite_x]
     mov rcx, 64
     rep movsb
     mov rdi, rsp
-    add rdi, 1112
+    add rdi, LV_OFF_SPRITE_Y
     lea rsi, [rel sprite_y]
     mov rcx, 64
     rep movsb
     mov rdi, rsp
-    add rdi, 1176
+    add rdi, LV_OFF_SPRITE_TYPE
     lea rsi, [rel sprite_type]
     mov rcx, 8
     rep movsb
     mov rdi, rsp
-    add rdi, 1184
+    add rdi, LV_OFF_SPRITE_ACTIVE
     lea rsi, [rel sprite_active]
     mov rcx, 8
     rep movsb
@@ -862,7 +881,7 @@ save_level:
     mov rax, 1
     mov rdi, rbx
     mov rsi, rsp
-    mov rdx, 1192
+    mov rdx, LV_BUF_SIZE
     syscall
     mov rax, 3
     mov rdi, rbx

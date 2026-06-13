@@ -13,6 +13,9 @@ section .text
     extern elapsed_ns
     extern sin_table
     extern cos_table
+    extern num_lights, light_x, light_y, light_r, light_i
+    extern gun_fire_timer, game_over_flag, victory_flag, player_health
+    extern font_table
 
 FOV_HALF     equ 30         ; half of 60° FOV
 FOV_TOTAL    equ 60         ; full FOV
@@ -62,12 +65,6 @@ clear_buffer:
     pop rbp
     ret
 
-append_byte:
-    mov rdi, [rel buf_pos]
-    mov [rdi], dil
-    inc rdi
-    mov [rel buf_pos], rdi
-    ret
 
 append_bytes:
     push rdi
@@ -92,20 +89,20 @@ append_cursor_move:
     add rdi, 2
     mov [rel buf_pos], rdi
 
-    mov rax, r12
-    mov rdi, [rel buf_pos]
+    mov rdi, r12
+    mov rsi, [rel buf_pos]
     call int_to_ascii
-    mov [rel buf_pos], rdi
+    mov [rel buf_pos], rax
 
     mov rdi, [rel buf_pos]
     mov byte [rdi], ';'
     inc rdi
     mov [rel buf_pos], rdi
 
-    mov rax, r13
-    mov rdi, [rel buf_pos]
+    mov rdi, r13
+    mov rsi, [rel buf_pos]
     call int_to_ascii
-    mov [rel buf_pos], rdi
+    mov [rel buf_pos], rax
 
     mov rdi, [rel buf_pos]
     mov byte [rdi], 'H'
@@ -246,6 +243,7 @@ draw_pixel_sprite_scaled_at:
     sub rsp, 56                 ; allocate stack space (keeps 16-byte alignment)
 
     mov [rsp], r9
+    mov r10, [rbp + 16]         ; 7th argument (target_height) from stack
     mov [rsp + 8], r10 
     mov [rsp + 16], r8 
     mov [rsp + 24], rdi
@@ -455,7 +453,7 @@ draw_centered_str:
     pop rbx
     ret
 
-global draw_pixel_str
+
 draw_pixel_str:
     push rbp
     mov rbp, rsp
@@ -500,7 +498,6 @@ draw_pixel_str:
     ; Get pattern byte: font_table + char * 5 + row_idx
     imul rax, 5
     add rax, r12
-    extern font_table
     lea rdx, [rel font_table]
     movzx ebx, byte [rdx + rax] ; ebx = pattern byte (5 bits used: bits 4..0)
 

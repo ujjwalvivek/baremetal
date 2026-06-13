@@ -1,8 +1,6 @@
 ; entry.asm: program entry point, main loop, shutdown
 
 section .data
-    msg_start db 'terminal engine starting', 10
-    msg_start_len equ $ - msg_start
 
 section .text
     extern init_terminal

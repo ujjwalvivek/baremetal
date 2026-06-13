@@ -5,6 +5,45 @@ MAP_HEIGHT equ 32
 NUM_SPRITES equ 8
 NUM_ENEMIES equ 2
 
+LV_OFF_PLAYER_X      equ 0
+LV_OFF_PLAYER_Y      equ 8
+LV_OFF_PLAYER_ANGLE  equ 16
+LV_OFF_WORLD_MAP     equ 24
+LV_OFF_SPRITE_X      equ 1048
+LV_OFF_SPRITE_Y      equ 1112
+LV_OFF_SPRITE_TYPE   equ 1176
+LV_OFF_SPRITE_ACTIVE equ 1184
+LV_BUF_SIZE          equ 1192
+
+; Sprite types
+SPRITE_BARREL equ 0
+SPRITE_PILLAR equ 1
+SPRITE_KEY    equ 2
+SPRITE_ENEMY  equ 3
+SPRITE_CORPSE equ 4
+
+; Wall types
+WALL_STONE equ 1
+WALL_BRICK equ 2
+WALL_METAL equ 3
+WALL_WOOD  equ 4
+WALL_DOOR  equ 5
+
+; Combat/Gameplay
+SHOT_DAMAGE        equ 34
+ENEMY_DAMAGE       equ 10
+ENEMY_SPEED        equ 4
+STUN_FRAMES        equ 10
+HITBOX_HALF        equ 64
+GUN_FIRE_FRAMES    equ 8
+ENEMY_DETECT_RANGE equ 16*256
+ENEMY_ATTACK_RANGE equ 192
+
+; Fixed-point
+Q8_CELL            equ 256
+Q8_SHIFT           equ 8
+FIXED_HALF         equ 128
+
 ; Q8: real speed = MOVE_SPEED / 256 cells/frame  (16 = 3.75 cells/sec @ 60fps)
 MOVE_SPEED equ 16
 
@@ -73,6 +112,32 @@ world_map:
     db 1,0,0,0,0,0,0,4,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1  ; row 30
     db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1  ; row 31
 
+    level_filename db "level.bin", 0
+
+    global num_lights
+    global light_x, light_y, light_r, light_i, light_type
+    
+    ; 0 = static white, 1 = pulsing red, 2 = muzzle flash
+    num_lights dq 3
+    
+    ; Light 0: Static light in central corridor (near 16, 16)
+    ; Light 1: Pulsing alarm light in brick room (near 5, 5)
+    ; Light 2: Muzzle flash (attached to player, initially off)
+    light_x: dq 16*256 + 128,  5*256 + 128,  0
+    light_y: dq 16*256 + 128,  5*256 + 128,  0
+    
+    ; radius squared (in 256-units) to avoid sqrt
+    ; e.g. 5 cells = 5*256 = 1280. squared = 1638400
+    light_r: dq 1638400, 1000000, 2000000
+    
+    ; Intensity (0=off, higher=brighter)
+    light_i: dq 4, 3, 0
+    
+    light_type: dq 0, 1, 2
+
+    global gun_fire_timer
+    gun_fire_timer dq 0
+
 section .bss
 
 global player_x, player_y, player_angle, player_health, game_over_flag, victory_flag
@@ -85,11 +150,15 @@ victory_flag:   resq 1         ; 0=playing, 1=won
 
 global door_state
 door_state:   resb MAP_WIDTH * MAP_HEIGHT   ; 0=closed, 1=open (parallel to world_map)
+level_load_buffer: resb LV_BUF_SIZE
 
 section .text
 
 extern sin_table, cos_table
-extern key_up, key_down, key_left, key_right, key_use
+extern key_up, key_down, key_left, key_right, key_use, key_shoot
+extern sprite_x, sprite_y, sprite_type, sprite_active
+extern enemy_x, enemy_y, enemy_state, enemy_health, enemy_timer, enemy_sprite_idx
+extern frame_count, z_buffer, render_scr_cols
 
 global init_game, update_game, cast_ray, toggle_door
 
@@ -129,11 +198,11 @@ load_level:
     
     mov rbx, rax                ; rbx = fd
     
-    ; sys_read(fd, level_load_buffer, 1192)
+    ; sys_read(fd, level_load_buffer, LV_BUF_SIZE)
     mov rax, 0                  ; sys_read
     mov rdi, rbx                ; fd
     lea rsi, [rel level_load_buffer]
-    mov rdx, 1192
+    mov rdx, LV_BUF_SIZE
     syscall
     
     ; sys_close(fd)
@@ -145,46 +214,48 @@ load_level:
     lea rsi, [rel level_load_buffer]
     
     ; 1. player_x (offset 0)
-    mov rax, [rsi]
+    mov rax, [rsi + LV_OFF_PLAYER_X]
     mov [rel player_x], rax
     
     ; 2. player_y (offset 8)
-    mov rax, [rsi + 8]
+    mov rax, [rsi + LV_OFF_PLAYER_Y]
     mov [rel player_y], rax
     
     ; 3. player_angle (offset 16)
-    mov rax, [rsi + 16]
+    mov rax, [rsi + LV_OFF_PLAYER_ANGLE]
     mov [rel player_angle], rax
     
     ; 4. world_map (offset 24, 1024 bytes)
     lea rdi, [rel world_map]
-    lea rsi, [rel level_load_buffer + 24]
+    lea rsi, [rel level_load_buffer + LV_OFF_WORLD_MAP]
     mov rcx, 1024
     rep movsb
     
-    ; 5. sprite_x (offset 1048, 64 bytes)
-    extern sprite_x, sprite_y, sprite_type, sprite_active
+
     lea rdi, [rel sprite_x]
-    lea rsi, [rel level_load_buffer + 1048]
+    lea rsi, [rel level_load_buffer + LV_OFF_SPRITE_X]
     mov rcx, 64
     rep movsb
     
     ; 6. sprite_y (offset 1112, 64 bytes)
     lea rdi, [rel sprite_y]
-    lea rsi, [rel level_load_buffer + 1112]
+    lea rsi, [rel level_load_buffer + LV_OFF_SPRITE_Y]
     mov rcx, 64
     rep movsb
     
     ; 7. sprite_type (offset 1176, 8 bytes)
     lea rdi, [rel sprite_type]
-    lea rsi, [rel level_load_buffer + 1176]
+    lea rsi, [rel level_load_buffer + LV_OFF_SPRITE_TYPE]
     mov rcx, 8
     rep movsb
     
+    ; 8. sprite_active (offset 1184, 8 bytes)
+    lea rdi, [rel sprite_active]
+    lea rsi, [rel level_load_buffer + LV_OFF_SPRITE_ACTIVE]
+    mov rcx, 8
     rep movsb
 
     ; Sync enemy states and positions from sprite 6 and 7
-    extern enemy_x, enemy_y, enemy_state, enemy_health
     
     ; Enemy 0 (sprite 6)
     lea rax, [rel sprite_active]
@@ -232,13 +303,7 @@ load_level:
     pop rbp
     ret
 
-section .data
-    level_filename db "level.bin", 0
 
-section .bss
-    level_load_buffer: resb 1192
-
-section .text
 
 ; is_passable: check if cell at index rax is walkable
 ; In: rax = cell index (row*MAP_WIDTH + col)
@@ -321,6 +386,8 @@ update_game:
     push rbx
     push r12
     push r13
+    push r14
+    push r15
 
     cmp qword [rel game_over_flag], 1
     je .game_over_skip_input
@@ -418,10 +485,7 @@ update_game:
 .skip_y:
 
 .no_move:
-    extern key_shoot
-    extern frame_count
-    extern z_buffer
-    extern render_scr_cols
+
 
     ; Handle shooting
     cmp byte [rel key_shoot], 1
@@ -432,8 +496,6 @@ update_game:
     mov byte [rel key_shoot], 0          ; consume input
     
     ; --- HITSCAN COMBAT ---
-    push r14
-    push r15
     
     ; Get wall distance at center of screen (Z-buffer)
     mov rax, [rel render_scr_cols]
@@ -448,7 +510,7 @@ update_game:
     lea rcx, [rel sin_table]
     mov rcx, [rcx + rax*8]      ; rcx = sin (x1024)
     
-    extern enemy_x, enemy_y, enemy_state, enemy_health, enemy_timer
+
     xor r15, r15                ; i = 0
 .hitscan_loop:
     cmp r15, NUM_ENEMIES                  ; NUM_ENEMIES
@@ -504,20 +566,20 @@ update_game:
     sub r11, rax
     
     ; if abs(cross) < 64 (0.25 cells wide hitbox), it's a HIT!
-    cmp r11, 64
+    cmp r11, HITBOX_HALF
     jge .hitscan_next
     
     ; HIT!
     lea rdx, [rel enemy_health]
     mov al, [rdx + r15]
-    sub al, 34                  ; 3 shots to kill 100hp
+    sub al, SHOT_DAMAGE                  ; 3 shots to kill 100hp
     jns .not_dead
     xor al, al                  ; cap at 0
 .not_dead:
     mov [rdx + r15], al
     
     lea rdx, [rel enemy_timer]
-    mov byte [rdx + r15], 10    ; stun for 10 frames
+    mov byte [rdx + r15], STUN_FRAMES    ; stun for 10 frames
     
     lea rdx, [rel enemy_state]
     cmp al, 0
@@ -532,8 +594,6 @@ update_game:
     jmp .hitscan_loop
 
 .hitscan_done:
-    pop r15
-    pop r14
     
 .game_over_skip_input:
 .no_shoot:
@@ -616,13 +676,14 @@ update_game:
     mov qword [rel victory_flag], 0
 
 .win_done:
+    pop r15
+    pop r14
     pop r13
     pop r12
     pop rbx
     pop rbp
     ret
 
-; --- ENEMY AI & MOVEMENT ---
 update_enemies:
     push rbp
     mov rbp, rsp
@@ -632,7 +693,7 @@ update_enemies:
     push r14
     push r15
     
-    extern sprite_x, sprite_y, sprite_type, enemy_sprite_idx
+
     
     xor r15, r15                ; i = 0
 .ai_loop:
@@ -685,13 +746,13 @@ update_enemies:
     
     add r10, r11
     
-    cmp r10, 4096               ; 16 cells detection range
+    cmp r10, ENEMY_DETECT_RANGE               ; 16 cells detection range
     jg .ai_update_sprite        ; too far, don't move
-    cmp r10, 192                ; 0.75 cells attack range
+    cmp r10, ENEMY_ATTACK_RANGE                ; 0.75 cells attack range
     jl .ai_attack
     
     ; Move X
-    mov r12, 4                  ; ENEMY_SPEED = 4 (Q8)
+    mov r12, ENEMY_SPEED                  ; ENEMY_SPEED = 4 (Q8)
     test rbx, rbx
     jns .dx_pos
     neg r12
@@ -720,7 +781,7 @@ update_enemies:
     mov [rdx + r15*8], rax      ; commit X move
     
 .ai_move_y:
-    mov r12, 4                  ; ENEMY_SPEED = 4
+    mov r12, ENEMY_SPEED                  ; ENEMY_SPEED = 4
     test rcx, rcx
     jns .dy_pos
     neg r12
@@ -752,7 +813,7 @@ update_enemies:
     jnz .ai_update_sprite
     
     mov rax, [rel player_health]
-    sub rax, 10
+    sub rax, ENEMY_DAMAGE
     jns .health_ok
     xor rax, rax                ; cap at 0
 .health_ok:
@@ -1000,28 +1061,4 @@ cast_ray:
     pop rbp
     ret
 
-section .data
-    global num_lights
-    global light_x, light_y, light_r, light_i, light_type
-    
-    ; 0 = static white, 1 = pulsing red, 2 = muzzle flash
-    num_lights dq 3
-    
-    ; Light 0: Static light in central corridor (near 16, 16)
-    ; Light 1: Pulsing alarm light in brick room (near 5, 5)
-    ; Light 2: Muzzle flash (attached to player, initially off)
-    light_x: dq 16*256 + 128,  5*256 + 128,  0
-    light_y: dq 16*256 + 128,  5*256 + 128,  0
-    
-    ; radius squared (in 256-units) to avoid sqrt
-    ; e.g. 5 cells = 5*256 = 1280. squared = 1638400
-    light_r: dq 1638400, 1000000, 2000000
-    
-    ; Intensity (0=off, higher=brighter)
-    light_i: dq 4, 3, 0
-    
-    ; Type for colors
-    light_type: dq 0, 1, 2
 
-    global gun_fire_timer
-    gun_fire_timer dq 0

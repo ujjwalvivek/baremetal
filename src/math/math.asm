@@ -114,11 +114,15 @@ global lut_mul
 global fp_div
 global abs_val
 
-; int_to_ascii: rax=value, rdi=dest → rdi past end, rax=byte count
+; int_to_ascii: rdi=value, rsi=dest → rax = advanced dest pointer, rdx = byte count
 int_to_ascii:
+    push rbp
+    mov rbp, rsp
     push rbx
     push r12
 
+    mov rax, rdi               ; rax = value
+    mov rdi, rsi               ; rdi = dest pointer
     mov r12, rdi               ; save dest pointer
     mov rbx, 10
     xor rcx, rcx
@@ -128,9 +132,11 @@ int_to_ascii:
     jnz .divide_loop
     mov byte [rdi], '0'
     inc rdi
-    mov rax, 1
+    mov rax, rdi               ; return advanced dest pointer
+    mov rdx, 1                 ; byte count
     pop r12
     pop rbx
+    pop rbp
     ret
 
 .divide_loop:
@@ -144,7 +150,7 @@ int_to_ascii:
     jnz .divide_loop
 
     ; Digits are in digit_buf in reverse order. Write them forward.
-    mov rax, rcx
+    mov rbx, rcx               ; rbx = byte count
 .write_loop:
     dec rcx
     lea r8, [rel digit_buf]
@@ -154,8 +160,11 @@ int_to_ascii:
     test rcx, rcx
     jnz .write_loop
 
+    mov rax, rdi               ; return advanced dest pointer
+    mov rdx, rbx               ; return byte count
     pop r12
     pop rbx
+    pop rbp
     ret
 
 ; lut_mul: (Q8 × LUT×1024) >> 10 → Q8
