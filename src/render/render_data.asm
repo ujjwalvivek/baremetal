@@ -1,6 +1,12 @@
 MAP_WIDTH  equ 32
 MAP_HEIGHT equ 32
 
+%macro DEFINE_SPRITE 3
+    %1:
+    %1_w equ %2
+    %1_h equ %3
+%endmacro
+
 section .data
     esc_cursor_home:     db 27, '[H'
     esc_cursor_home_len equ $ - esc_cursor_home
@@ -113,7 +119,7 @@ wall_color_lens:
     esc_hand:  db 27, '[38;5;216m'   ; Skin tone
     esc_hand_len equ $ - esc_hand
     
-    gun_sprite:
+    DEFINE_SPRITE gun_sprite, 24, 9
         db 0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0 ; Row 0
         db 0,0,0,0,0,0,0,0,0,1,2,2,2,2,1,0,0,0,0,0,0,0,0,0 ; Row 1
         db 0,0,0,0,0,0,0,0,1,2,2,2,2,2,2,1,0,0,0,0,0,0,0,0 ; Row 2
@@ -123,10 +129,8 @@ wall_color_lens:
         db 0,0,0,0,1,2,2,3,3,4,4,4,4,4,4,3,3,2,2,1,0,0,0,0 ; Row 6
         db 0,0,0,1,2,2,3,3,4,4,4,4,4,4,4,4,3,3,2,2,1,0,0,0 ; Row 7
         db 0,0,1,2,2,3,3,4,4,4,4,4,4,4,4,4,4,3,3,2,2,1,0,0 ; Row 8
-    gun_sprite_w equ 24
-    gun_sprite_h equ 9
     
-    hand_sprite:
+    DEFINE_SPRITE hand_sprite, 24, 8
         db 0,0,0,0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0 ; Row 0
         db 0,0,0,0,1,2,2,2,1,1,1,1,1,1,2,2,2,1,0,0,0,0,0,0 ; Row 1
         db 0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0 ; Row 2
@@ -135,18 +139,14 @@ wall_color_lens:
         db 1,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,1,0,0 ; Row 5
         db 1,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,1,0 ; Row 6
         db 1,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,1,0 ; Row 7
-    hand_sprite_w equ 24
-    hand_sprite_h equ 8
 
-    flash_sprite:
+    DEFINE_SPRITE flash_sprite, 24, 6
         db 0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0 ; Row 0
         db 0,0,0,0,0,0,0,0,0,1,2,2,2,2,1,0,0,0,0,0,0,0,0,0 ; Row 1
         db 0,0,0,0,0,0,0,0,1,2,3,3,3,3,2,1,0,0,0,0,0,0,0,0 ; Row 2
         db 0,0,0,0,0,0,0,1,2,3,3,4,4,3,3,2,1,0,0,0,0,0,0,0 ; Row 3
         db 0,0,0,0,0,0,1,2,3,3,4,4,4,4,3,3,2,1,0,0,0,0,0,0 ; Row 4
         db 0,0,0,0,0,1,2,3,4,4,4,4,4,4,4,4,3,2,1,0,0,0,0,0 ; Row 5
-    flash_sprite_w equ 24
-    flash_sprite_h equ 6
 
     ; Indexed by shade tier 0-3 in wall_color_ptrs / wall_color_lens
 

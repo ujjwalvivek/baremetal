@@ -1,4 +1,5 @@
 ; editor.asm: In-game map editor written in x86-64 assembly
+NUM_SPRITES equ 8
 section .data
     save_filename db "level.bin", 0
     
@@ -362,7 +363,7 @@ paint_wall:
     mov r9, rax
     xor rcx, rcx
 .sprite_clear_loop:
-    cmp rcx, 8
+    cmp rcx, NUM_SPRITES
     jge .done
     lea r10, [rel sprite_active]
     cmp byte [r10 + rcx], 1
@@ -397,7 +398,7 @@ place_sprite:
     mov r9, rax
     xor rcx, rcx
 .search_loop:
-    cmp rcx, 8
+    cmp rcx, NUM_SPRITES
     jge .search_done
     lea r10, [rel sprite_active]
     cmp byte [r10 + rcx], 1
@@ -416,7 +417,7 @@ place_sprite:
 .search_done:
     xor rcx, rcx
 .inactive_loop:
-    cmp rcx, 8
+    cmp rcx, NUM_SPRITES
     jge .no_slot
     lea r10, [rel sprite_active]
     cmp byte [r10 + rcx], 0
@@ -462,7 +463,7 @@ erase_cell:
     mov r9, rax
     xor rcx, rcx
 .erase_sprite_loop:
-    cmp rcx, 8
+    cmp rcx, NUM_SPRITES
     jge .erase_done
     lea r10, [rel sprite_active]
     cmp byte [r10 + rcx], 1
@@ -602,7 +603,7 @@ get_cell_draw_data:
 .check_sprites:
     xor r8, r8
 .sprite_loop:
-    cmp r8, 8
+    cmp r8, NUM_SPRITES
     jge .check_walls
     lea r10, [rel sprite_active]
     cmp byte [r10 + r8], 1
@@ -767,7 +768,7 @@ draw_status_bar:
     xor r8, r8
     xor rcx, rcx
 .cnt_loop:
-    cmp rcx, 8
+    cmp rcx, NUM_SPRITES
     jge .cnt_done
     lea r10, [rel sprite_active]
     cmp byte [r10 + rcx], 1

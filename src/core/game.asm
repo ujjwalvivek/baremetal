@@ -2,6 +2,8 @@
 
 MAP_WIDTH  equ 32
 MAP_HEIGHT equ 32
+NUM_SPRITES equ 8
+NUM_ENEMIES equ 2
 
 ; Q8: real speed = MOVE_SPEED / 256 cells/frame  (16 = 3.75 cells/sec @ 60fps)
 MOVE_SPEED equ 16
@@ -449,7 +451,7 @@ update_game:
     extern enemy_x, enemy_y, enemy_state, enemy_health, enemy_timer
     xor r15, r15                ; i = 0
 .hitscan_loop:
-    cmp r15, 2                  ; NUM_ENEMIES
+    cmp r15, NUM_ENEMIES                  ; NUM_ENEMIES
     jge .hitscan_done
     
     lea rdx, [rel enemy_state]
@@ -576,7 +578,7 @@ update_game:
     ; 1. Check if all enemies are dead
     xor rcx, rcx                ; index = 0
 .check_enemy_alive:
-    cmp rcx, 2                  ; NUM_ENEMIES
+    cmp rcx, NUM_ENEMIES                  ; NUM_ENEMIES
     jge .all_enemies_dead
     lea rdx, [rel enemy_state]
     mov al, [rdx + rcx]
@@ -634,7 +636,7 @@ update_enemies:
     
     xor r15, r15                ; i = 0
 .ai_loop:
-    cmp r15, 2                  ; NUM_ENEMIES
+    cmp r15, NUM_ENEMIES                  ; NUM_ENEMIES
     jge .ai_done
     
     lea rdx, [rel enemy_state]

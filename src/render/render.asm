@@ -1012,6 +1012,10 @@ render_frame:
     jmp .row_loop
 
 .frame_done:
+    ; Projects entities (barrels, pillars, keys, enemies) from 2D world coords 
+    ; to camera-space, sorts them by depth (Painters' Algorithm), and renders 
+    ; them column-by-column, performing depth buffering (Z-buffer checks)
+    ; to handle occlusion behind walls.
     ; --- STEP 1: Compute sprite camera-space transforms ---
     xor r12, r12                    ; r12 = sprite index i (0..5)
 .calc_sprite_loop:
@@ -1492,6 +1496,10 @@ render_frame:
     inc r12
     jmp .draw_sprite_loop
 .draw_sprite_done:
+    ; Renders direct screen-space overlays (Game Over screen, Victory screen, 
+    ; weapon sprites: muzzle flash, gun, hand, and the text stats bar) 
+    ; directly to target character rows/cols without camera projection 
+    ; calculations or Z-buffer testing.    
     ; --- Check Game Over Overlay ---
     extern game_over_flag
     cmp qword [rel game_over_flag], 1
