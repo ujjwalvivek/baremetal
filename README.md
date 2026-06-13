@@ -25,7 +25,7 @@ Assembler: `nasm -f elf64 -g -F dwarf`. Linker: `ld -static`. DWARF debug info o
 
 ## Module Map
 
-```
+```text
 baremetal/
 ├── src/
 │   ├── core/
@@ -73,6 +73,26 @@ init_terminal → get_terminal_size → init_game → render_init → render_sta
 ```
 
 `nanosleep` woken by a signal returns early with `EINTR`. The loop doesn't retry: it just runs the next frame. At 60fps the drift is imperceptible.
+
+## Feature Summary
+
+| Feature             | Notes                                                   |
+| ------------------- | ------------------------------------------------------- |
+| DDA raycaster       | Perpendicular distance, 64 max steps                    |
+| 5 wall types        | Stone, brick, metal, wood, door with procedural shaders |
+| 4-distance shading  | █▓▒░ with color escapes per wall type                   |
+| 3 point lights      | Static, pulsing, muzzle flash                           |
+| 8 sprites (4 types) | Barrel, pillar, key, enemy/corpse                       |
+| Enemy AI            | Chase, attack, hurt, death states                       |
+| Hitscan combat      | Dot/cross product hit detection                         |
+| Doors               | Toggle via E, open doors pass rays                      |
+| Gun HUD             | Pistol + hand + muzzle flash sprites                    |
+| Start screen        | Pixels font, controls box                               |
+| Game over           | Red fill, centered text                                 |
+| Minimap             | 16×16 scrolling, directional marker                     |
+| FPS counter         | Rolling 60-frame average                                |
+| Terminal handling   | Raw mode, alt screen, 4 signals, resize                 |
+| Math LUTs           | 360-entry sin/cos ×1024, int_to_ascii                   |
 
 ## Terminal (`terminal.asm`)
 
@@ -266,44 +286,13 @@ gdb ./baremetal
 
 Terminal stuck after crash: `reset`.
 
-## License
-
-The code is licensed under the GPL-3.0 license.
-
-
-
-
-
-
-
-
-
-
-
-
-## Feature Summary
-
-| Feature             | Notes                                                   |
-| ------------------- | ------------------------------------------------------- |
-| DDA raycaster       | Perpendicular distance, 64 max steps                    |
-| 5 wall types        | Stone, brick, metal, wood, door with procedural shaders |
-| 4-distance shading  | █▓▒░ with color escapes per wall type                   |
-| 3 point lights      | Static, pulsing, muzzle flash                           |
-| 8 sprites (4 types) | Barrel, pillar, key, enemy/corpse                       |
-| Enemy AI            | Chase, attack, hurt, death states                       |
-| Hitscan combat      | Dot/cross product hit detection                         |
-| Doors               | Toggle via E, open doors pass rays                      |
-| Gun HUD             | Pistol + hand + muzzle flash sprites                    |
-| Start screen        | Pixels font, controls box                               |
-| Game over           | Red fill, centered text                                 |
-| Minimap             | 16×16 scrolling, directional marker                     |
-| FPS counter         | Rolling 60-frame average                                |
-| Terminal handling   | Raw mode, alt screen, 4 signals, resize                 |
-| Math LUTs           | 360-entry sin/cos ×1024, int_to_ascii                   |
-
 ## Known Issues
 
 - `term_cols - 1` safety margin in `get_terminal_size` is a workaround for escape-sequence wrapping at the last column. The renderer doesn't account for the byte-width of escape codes when computing column positions.
 - Angle normalisation does one add or subtract. If `ROT_SPEED` were ever >= 360 this would wrap incorrectly (currently 5).
 - DDA iteration cap is 64. Fine for a 32×32 map. Raise it if the map grows past `(MAP_WIDTH + MAP_HEIGHT) * 2 > 64`.
-- The lighting system was added before enemies were complete (documented in Audit.md).
+- The lighting system is still immature.
+
+## License
+
+The code is licensed under the GPL-3.0 license.

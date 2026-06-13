@@ -370,39 +370,39 @@ Makefile flags: `nasm -f elf64 -g -F dwarf -I src/render/` (DWARF debug symbols,
 
 ## Feature Inventory
 
-| Feature                                    | Status | Location                  |
-| ------------------------------------------ | ------ | ------------------------- |
-| Fixed 60fps timestep loop                  | Done   | `entry.asm`               |
-| Terminal raw mode (full flags)             | Done   | `terminal.asm`            |
-| Alternate screen buffer                    | Done   | `terminal.asm`            |
-| Signal handlers (SIGINT/TERM/SEGV/WINCH)   | Done   | `terminal.asm`            |
-| Dynamic terminal size via TIOCGWINSZ       | Done   | `terminal.asm`            |
-| No-flicker frame buffer with sync markers  | Done   | `render.asm`              |
-| Non-blocking input with poll+read drain    | Done   | `input.asm`               |
-| Grid-native input (no diagonals)           | Done   | `input.asm`               |
-| Box-drawing border                         | Done   | `render.asm`              |
-| 32×32 world map, 4 quadrants, 5 wall types | Done   | `game.asm`                |
-| DDA raycaster with perpendicular distance  | Done   | `game.asm`                |
-| Procedural wall texturing (5 types)        | Done   | `render.asm`              |
-| 4-tier distance shading (█▓▒░)             | Done   | `render.asm`              |
-| Colour escapes per wall type (5×4=20)      | Done   | `render_data.asm`         |
-| Ceiling star field                         | Done   | `render.asm`              |
-| Floor carpet with band shading             | Done   | `render.asm`              |
-| 3-point dynamic lighting                   | Done   | `game.asm` + `render.asm` |
-| Interactive doors (E key toggle)           | Done   | `game.asm`                |
-| Wall sliding collision                     | Done   | `game.asm`                |
-| Sprite system (8 sprites, 4 types)         | Done   | `render.asm`              |
-| Painter's Algorithm depth sorting          | Done   | `render.asm`              |
-| Z-buffer for sprite occlusion              | Done   | `render.asm`              |
-| Scrolling minimap with direction marker    | Done   | `render.asm`              |
-| Enemy AI (chase/attack/hurt/dead)          | Done   | `game.asm`                |
-| Hitscan combat (dot/cross product)         | Done   | `game.asm`                |
-| Gun HUD (pistol + hand + muzzle flash)     | Done   | `render.asm`              |
-| Pixel-art start screen                     | Done   | `render_start.asm`        |
-| Game over screen                           | Done   | `render.asm`              |
-| FPS counter (60-frame rolling)             | Done   | `render.asm`              |
-| Fixed-point sin/cos LUTs (×1024, 360°)     | Done   | `math.asm`                |
-| int_to_ascii with correct ABI              | Done   | `math.asm`                |
+| Feature                                    | Location                  |
+| ------------------------------------------ | ------------------------- |
+| Fixed 60fps timestep loop                  | `entry.asm`               |
+| Terminal raw mode (full flags)             | `terminal.asm`            |
+| Alternate screen buffer                    | `terminal.asm`            |
+| Signal handlers (SIGINT/TERM/SEGV/WINCH)   | `terminal.asm`            |
+| Dynamic terminal size via TIOCGWINSZ       | `terminal.asm`            |
+| No-flicker frame buffer with sync markers  | `render.asm`              |
+| Non-blocking input with poll+read drain    | `input.asm`               |
+| Grid-native input (no diagonals)           | `input.asm`               |
+| Box-drawing border                         | `render.asm`              |
+| 32×32 world map, 4 quadrants, 5 wall types | `game.asm`                |
+| DDA raycaster with perpendicular distance  | `game.asm`                |
+| Procedural wall texturing (5 types)        | `render.asm`              |
+| 4-tier distance shading (█▓▒░)             | `render.asm`              |
+| Colour escapes per wall type (5×4=20)      | `render_data.asm`         |
+| Ceiling star field                         | `render.asm`              |
+| Floor carpet with band shading             | `render.asm`              |
+| 3-point dynamic lighting                   | `game.asm` + `render.asm` |
+| Interactive doors (E key toggle)           | `game.asm`                |
+| Wall sliding collision                     | `game.asm`                |
+| Sprite system (8 sprites, 4 types)         | `render.asm`              |
+| Painter's Algorithm depth sorting          | `render.asm`              |
+| Z-buffer for sprite occlusion              | `render.asm`              |
+| Scrolling minimap with direction marker    | `render.asm`              |
+| Enemy AI (chase/attack/hurt/dead)          | `game.asm`                |
+| Hitscan combat (dot/cross product)         | `game.asm`                |
+| Gun HUD (pistol + hand + muzzle flash)     | `render.asm`              |
+| Pixel-art start screen                     | `render_start.asm`        |
+| Game over screen                           | `render.asm`              |
+| FPS counter (60-frame rolling)             | `render.asm`              |
+| Fixed-point sin/cos LUTs (×1024, 360°)     | `math.asm`                |
+| int_to_ascii with correct ABI              | `math.asm`                |
 
 ---
 
