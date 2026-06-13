@@ -3,9 +3,11 @@
 ![Echopoint SVG](https://echopoint.ujjwalvivek.com/svg/badges/custom?leftText=x86-64&rightText=assembly&badgeColor=808000&textColor=ffffff)
 ![Echopoint SVG](https://echopoint.ujjwalvivek.com/svg/badges/custom?leftText=Linux+only&rightText=Static+binary&badgeColor=804000&textColor=ffffff)
 ![Echopoint SVG](https://echopoint.ujjwalvivek.com/svg/badges/custom?leftText=Intel+syntax&badgeColor=004080&textColor=ffffff)
-![Echopoint SVG](https://echopoint.ujjwalvivek.com/svg/badges/custom?leftText=16KB+code&rightText=128KB+data%2Bbss&badgeColor=400040&textColor=ffffff)
+![Echopoint SVG](https://echopoint.ujjwalvivek.com/svg/badges/custom?leftText=14KB+code&rightText=280KB+data%2Bbss&badgeColor=400040&textColor=ffffff)
+![Echopoint SVG](https://echopoint.ujjwalvivek.com/svg/badges/custom?leftText=69KB&rightText=Executable&badgeColor=203040&textColor=ffffff)
 
-<img width="1000" alt="baremetal" src="https://github.com/user-attachments/assets/72c03fd5-6db2-402a-8e23-807127002295" />
+<img width="1000" alt="baremetal_v1_1_0" src="https://github.com/user-attachments/assets/05a915ea-f934-421b-a707-9c60d18760c5" />
+
 
 A Wolfenstein-3D-style DDA raycaster written entirely in x86-64 assembly. Runs at 60fps in any Linux terminal. No libc, no FPU, no framebuffer, and a 69KB static binary.
 
