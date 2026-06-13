@@ -231,6 +231,102 @@ draw_pixel_sprite_at:
     pop rbx
     pop rbp
     ret
+
+; Clobbers: rax, rbx, rcx, rdx, r8, r9, r10, r11
+draw_pixel_sprite_scaled_at:
+    push rbp
+    mov rbp, rsp
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    sub rsp, 56                 ; allocate stack space (keeps 16-byte alignment)
+
+    mov [rsp], r9
+    mov [rsp + 8], r10 
+    mov [rsp + 16], r8 
+    mov [rsp + 24], rdi
+    mov [rsp + 32], rsi
+    mov r14, rdx
+    mov r15, rcx
+
+    xor r12, r12                ; r12 = ty = 0
+.row_loop:
+    mov rax, [rsp + 8] 
+    cmp r12, rax
+    jge .done
+
+    ; sy = (ty * orig_height + target_height / 2) / target_height
+    mov rax, r12
+    imul rax, [rsp + 16]
+    mov rbx, [rsp + 8]
+    shr rbx, 1
+    add rax, rbx
+    xor rdx, rdx
+    div qword [rsp + 8] 
+    
+    imul rax, r15
+    mov [rsp + 40], rax
+
+    xor r13, r13
+.col_loop:
+    mov rax, [rsp]
+    cmp r13, rax
+    jge .col_done
+
+    ; sx = (tx * orig_width + target_width / 2) / target_width
+    mov rax, r13
+    imul rax, r15
+    mov rbx, [rsp]
+    shr rbx, 1
+    add rax, rbx
+    xor rdx, rdx
+    div qword [rsp]
+
+    add rax, [rsp + 40]         ; sy * orig_width + sx
+    movzx eax, byte [r14 + rax]
+
+    test al, al
+    jz .pixel_skip
+
+    ; Map pixel_val (1-4) to block char: 1=0x88, 2=0x93, 3=0x92, 4=0x91
+    mov dl, 0x88                ; default █
+    cmp al, 1
+    je .char_ok
+    mov dl, 0x93                ; ▓
+    cmp al, 2
+    je .char_ok
+    mov dl, 0x92                ; ▒
+    cmp al, 3
+    je .char_ok
+    mov dl, 0x91                ; ░
+.char_ok:
+    ; Draw block at (screen_row + ty, screen_col + tx)
+    mov rdi, [rsp + 24]
+    add rdi, r12
+    mov rsi, [rsp + 32]
+    add rsi, r13
+    call draw_shaded_block_at
+
+.pixel_skip:
+    inc r13
+    jmp .col_loop
+
+.col_done:
+    inc r12
+    jmp .row_loop
+
+.done:
+    add rsp, 56
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    pop rbp
+    ret
+
 ; rdi=row, rsi=col, rdx=src, rcx=len
 draw_bytes_at:
     push rbx

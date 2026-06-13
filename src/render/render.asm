@@ -796,23 +796,50 @@ render_frame:
     xor rax, rcx
     and rax, 63
     
-    mov rdi, [rel buf_pos]
     cmp rax, 0
     jne .ceil_empty
+
+    ; Star (▪): print in white
+    push rsi
+    push rcx
+    lea rsi, [rel esc_white_fg]
+    mov rcx, esc_white_fg_len
+    call append_bytes
+    pop rcx
+    pop rsi
+    mov qword [rsp], -1          ; force color update on next cell
+
+    mov rdi, [rel buf_pos]
     mov byte [rdi], 0xE2
     mov byte [rdi+1], 0x96
     mov byte [rdi+2], 0xAA
     add rdi, 3
     jmp .ceil_char_done
+
 .ceil_empty:
     cmp rax, 1
     jne .ceil_space
+
+    ; Star (.): print in white
+    push rsi
+    push rcx
+    lea rsi, [rel esc_white_fg]
+    mov rcx, esc_white_fg_len
+    call append_bytes
+    pop rcx
+    pop rsi
+    mov qword [rsp], -1          ; force color update on next cell
+
+    mov rdi, [rel buf_pos]
     mov byte [rdi], '.'
     inc rdi
     jmp .ceil_char_done
+
 .ceil_space:
+    mov rdi, [rel buf_pos]
     mov byte [rdi], ' '
     inc rdi
+
 .ceil_char_done:
     mov [rel buf_pos], rdi
     jmp .col_next
@@ -1347,12 +1374,38 @@ render_frame:
 
     ; --- Draw Gun HUD ---
     extern gun_fire_timer
-    
+
+    ; Compute scale-dependent dimensions
+    ; Default to scale 1 (full size):
+    mov r9, 24                  ; target_width (all sprites are 24 wide originally)
+    mov r10, 9                  ; target_gun_h
+    mov r11, 8                  ; target_hand_h
+    mov r12, 6                  ; target_flash_h
+
+    cmp qword [rel term_rows], 30
+    jl .use_scale_2
+    cmp qword [rel term_cols], 60
+    jl .use_scale_2
+    jmp .scale_setup_done
+
+.use_scale_2:
+    mov r9, 12                  ; target_width
+    mov r10, 4                  ; target_gun_h
+    mov r11, 4                  ; target_hand_h
+    mov r12, 3                  ; target_flash_h
+
+.scale_setup_done:
+    ; Compute top-of-gun row (term_rows - target_gun_h - target_hand_h)
     mov rdi, [rel term_rows]
-    sub rdi, 17                 ; top of gun (9 rows for gun, 8 rows for hand)
+    sub rdi, r10
+    sub rdi, r11
+    
+    ; Compute left column (term_cols / 2 - target_width / 2)
     mov rsi, [rel term_cols]
-    sar rsi, 1
-    sub rsi, 12                 ; left of gun (half of 24 columns wide)
+    sar rsi, 1                  ; term_cols / 2
+    mov rax, r9                 ; target_width
+    sar rax, 1                  ; target_width / 2
+    sub rsi, rax                ; term_cols / 2 - target_width / 2
 
     mov rax, [rel gun_fire_timer]
     test rax, rax
@@ -1368,7 +1421,10 @@ render_frame:
     ; Muzzle flash is drawn above the gun
     push rdi
     push rsi
-    sub rdi, 6                  ; flash is 6 rows high, draw it directly above the gun
+    push r10
+    push r9
+    
+    sub rdi, r12                ; draw directly above the gun (subtract target_flash_h)
     
     push rdi
     push rsi
@@ -1381,9 +1437,13 @@ render_frame:
     lea rdx, [rel flash_sprite]
     mov rcx, flash_sprite_w
     mov r8, flash_sprite_h
-    call draw_pixel_sprite_at
+    ; r9 = target_width (already there)
+    mov r10, r12                ; target_flash_h
+    call draw_pixel_sprite_scaled_at
     
     call emit_color_reset
+    pop r9
+    pop r10
     pop rsi
     pop rdi
 
@@ -1393,6 +1453,8 @@ render_frame:
     ; Draw Pistol
     push rdi
     push rsi
+    push r10
+    push r9
     
     push rdi
     push rsi
@@ -1405,8 +1467,12 @@ render_frame:
     lea rdx, [rel gun_sprite]
     mov rcx, gun_sprite_w
     mov r8, gun_sprite_h
-    call draw_pixel_sprite_at
+    ; r9 = target_width (already there)
+    ; r10 = target_gun_h (already there)
+    call draw_pixel_sprite_scaled_at
     
+    pop r9
+    pop r10
     pop rsi
     pop rdi
     
@@ -1414,7 +1480,7 @@ render_frame:
     push rdi
     push rsi
     
-    add rdi, 9                  ; move down by the height of the pistol
+    add rdi, r10                ; move down by target_gun_h
     
     push rdi
     push rsi
@@ -1427,7 +1493,9 @@ render_frame:
     lea rdx, [rel hand_sprite]
     mov rcx, hand_sprite_w
     mov r8, hand_sprite_h
-    call draw_pixel_sprite_at
+    ; r9 = target_width (already there)
+    mov r10, r11                ; target_hand_h
+    call draw_pixel_sprite_scaled_at
     
     call emit_color_reset
     pop rsi
