@@ -7,7 +7,7 @@
 
 <img width="1000" alt="baremetal" src="https://github.com/user-attachments/assets/72c03fd5-6db2-402a-8e23-807127002295" />
 
-A Wolfenstein-3D-style DDA raycaster written entirely in x86-64 assembly. Runs at 60fps in any Linux terminal. No libc, no FPU, no framebuffer, and a 52KB static binary.
+A Wolfenstein-3D-style DDA raycaster written entirely in x86-64 assembly. Runs at 60fps in any Linux terminal. No libc, no FPU, no framebuffer, and a 69KB static binary.
 
 ## Constraints
 
