@@ -8,7 +8,6 @@
 
 <img width="1000" alt="baremetal_v1_1_0" src="https://github.com/user-attachments/assets/05a915ea-f934-421b-a707-9c60d18760c5" />
 
-
 A Wolfenstein-3D-style DDA raycaster written entirely in x86-64 assembly. Runs at 60fps in any Linux terminal. No libc, no FPU, no framebuffer, and a 69KB static binary.
 
 ## Constraints
@@ -295,4 +294,4 @@ Terminal stuck after crash: `reset`.
 
 ## License
 
-The code is licensed under the GPL-3.0 license.
+The code is licensed under the GPL-3.0 [License](LICENSE).
